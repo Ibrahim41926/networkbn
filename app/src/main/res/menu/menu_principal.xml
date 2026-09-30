@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Modes exclusifs : un seul coché à la fois. -->
+    <group
+        android:id="@+id/groupe_modes"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/mode_ajout_objet"
+            android:title="@string/mode_ajout_objet" />
+        <item
+            android:id="@+id/mode_ajout_connexion"
+            android:title="@string/mode_ajout_connexion" />
+        <item
+            android:id="@+id/mode_modification"
+            android:title="@string/mode_modification" />
+    </group>
+
+    <item
+        android:id="@+id/action_reinitialiser"
+        android:title="@string/action_reinitialiser" />
+
+</menu>

@@ -1,0 +1,16 @@
+<resources>
+    <string name="mode_ajout_objet">Ajouter des objets</string>
+    <string name="mode_ajout_connexion">Ajouter des connexions</string>
+    <string name="mode_modification">Déplacer les objets</string>
+    <string name="action_reinitialiser">Réinitialiser le réseau</string>
+
+    <string name="titre_ajout_objet">Nouvel objet</string>
+    <string name="indice_etiquette">Étiquette</string>
+    <string name="erreur_etiquette_vide">L\'étiquette ne peut pas être vide</string>
+
+    <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
+    <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>
+
+    <string name="bouton_ok">OK</string>
+    <string name="bouton_annuler">Annuler</string>
+</resources>

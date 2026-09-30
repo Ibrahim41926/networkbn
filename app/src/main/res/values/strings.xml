@@ -1,3 +1,18 @@
 <resources>
-    <string name="app_name">NetworkBN</string>
+    <string name="app_name" translatable="false">NetworkBN</string>
+
+    <string name="mode_ajout_objet">Add objects</string>
+    <string name="mode_ajout_connexion">Add connections</string>
+    <string name="mode_modification">Move objects</string>
+    <string name="action_reinitialiser">Reset network</string>
+
+    <string name="titre_ajout_objet">New object</string>
+    <string name="indice_etiquette">Label</string>
+    <string name="erreur_etiquette_vide">The label cannot be empty</string>
+
+    <string name="titre_reinitialiser">Reset the network?</string>
+    <string name="message_reinitialiser">All objects and connections will be deleted.</string>
+
+    <string name="bouton_ok">OK</string>
+    <string name="bouton_annuler">Cancel</string>
 </resources>
