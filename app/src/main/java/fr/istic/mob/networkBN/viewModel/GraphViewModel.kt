@@ -110,12 +110,12 @@ class GraphViewModel : ViewModel() {
 
     /** Le doigt se pose en (x, y). [objetTouche] = objet sous le doigt, ou null. */
     fun debutGlissement(x: Float, y: Float, objetTouche: Objet?) {
-        annulerGeste()                                   // repart d'un état propre
-        if (objetTouche == null) return                  // depuis le fond : aucune action
-        if (objetTouche !in graphe.objets) return        // objet inconnu du graphe
+        annulerGeste()                                   // on repart d'un état propre en annulant tout geste precedent
+        if (objetTouche == null) return                  // si on ai sur le fond  : aucune action
+        if (objetTouche !in graphe.objets) return        //si on ai sur un objet qui n'est pas dans le grpahe : aucune action
 
         when (modeCourant) {
-            ModeEdition.MODIFICATION -> {
+            ModeEdition.MODIFICATION -> {   //
                 objetSelectionne = objetTouche
                 decalageX = objetTouche.position.x - x
                 decalageY = objetTouche.position.y - y
@@ -137,11 +137,12 @@ class GraphViewModel : ViewModel() {
                     publierGraphe()
                 }
             }
-            ModeEdition.AJOUT_CONNEXION -> {
+            ModeEdition.AJOUT_CONNEXION -> { // lors du glissement
+                                            // on recree la connexion provisoire en modifiant la position du doigt
                 val provisoire = _connexionProvisoire.value ?: return
                 _connexionProvisoire.value = provisoire.copy(xDoigt = x, yDoigt = y)
             }
-            ModeEdition.AJOUT_OBJET -> Unit
+            ModeEdition.AJOUT_OBJET -> Unit // en mode d'ajout dobjet
         }
     }
 
