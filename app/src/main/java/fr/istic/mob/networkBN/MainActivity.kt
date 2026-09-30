@@ -11,7 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.viewmodel.compose.viewModel
 import fr.istic.mob.networkBN.ui.theme.NetworkBNTheme
+import fr.istic.mob.networkBN.viewModel.GraphViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,28 +22,26 @@ class MainActivity : ComponentActivity() {
         setContent {
             NetworkBNTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    EcranReseau(modifier = Modifier.padding(innerPadding))
                 }
             }
         }
     }
 }
 
+/** Écran principal. Le ViewModel survit aux rotations d'écran. */
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+fun EcranReseau(
+    modifier: Modifier = Modifier,
+    viewModel: GraphViewModel = viewModel()
+) {
+    Text(text = "NetworkBN", modifier = modifier)
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun EcranReseauPreview() {
     NetworkBNTheme {
-        Greeting("Android")
+        EcranReseau()
     }
 }
