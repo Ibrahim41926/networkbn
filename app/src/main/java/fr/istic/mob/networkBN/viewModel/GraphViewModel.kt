@@ -142,7 +142,7 @@ class GraphViewModel : ViewModel() {
                 val provisoire = _connexionProvisoire.value ?: return
                 _connexionProvisoire.value = provisoire.copy(xDoigt = x, yDoigt = y)
             }
-            ModeEdition.AJOUT_OBJET -> Unit // en mode d'ajout dobjet
+            ModeEdition.AJOUT_OBJET -> Unit // en mode d'ajout dobjet le glissement ne produit rien
         }
     }
 
@@ -151,14 +151,14 @@ class GraphViewModel : ViewModel() {
      * En AJOUT_CONNEXION : crée la connexion si le modèle l'accepte
      * (pas de boucle, pas de doublon). Dans tous les cas, le geste se termine.
      */
-    fun finGlissement(objetSousLeDoigt: Objet?) {
+    fun finGlissement(objetSousLeDoigt: Objet?) { // a la fin du glissement
         val provisoire = _connexionProvisoire.value
-        if (modeCourant == ModeEdition.AJOUT_CONNEXION &&
-            provisoire != null &&
-            objetSousLeDoigt != null
+        if (modeCourant == ModeEdition.AJOUT_CONNEXION && // si nous sommes en mode dajout de connexion
+            provisoire != null &&                       // et on a une connexion provisoire qui a ete dessiné
+            objetSousLeDoigt != null                // que cette connexion provisoire arrive sur un autre objet
         ) {
-            if (graphe.addConnexion(provisoire.source, objetSousLeDoigt) != null) {
-                publierGraphe()
+            if (graphe.addConnexion(provisoire.source, objetSousLeDoigt) != null) { // et que cet objet est distint on ajoute une connexion dans le graphe
+                publierGraphe()     // on signale ensuite la
             }
         }
         annulerGeste()
@@ -179,9 +179,9 @@ class GraphViewModel : ViewModel() {
     // ---------- Réinitialisation ----------
 
     /** Après confirmation : supprime objets et connexions, garde le plan. */
-    fun reinitialiser() {
-        annulerGeste()
-        graphe.resetAll()
-        publierGraphe()
+    fun reinitialiser() { // la renitialisation
+        annulerGeste() // annule le dernier geste
+        graphe.resetAll()   // vide le graphe
+        publierGraphe() // on fait savoir a la view que le graphe a change
     }
 }
