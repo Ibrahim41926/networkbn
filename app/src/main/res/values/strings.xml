@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name" translatable="false">NetworkBN</string>
 
+    <!-- Titre de la barre du haut : noms du binôme (voir Auteurs.kt). -->
+    <string name="titre_binome" translatable="false">%1$s %2$s &amp; %3$s %4$s</string>
+
     <string name="mode_ajout_objet">Add objects</string>
     <string name="mode_ajout_connexion">Add connections</string>
     <string name="mode_modification">Move objects</string>

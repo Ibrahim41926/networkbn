@@ -46,6 +46,12 @@ class MainActivity : AppCompatActivity() {
 
         barreOutils = findViewById(R.id.barre_outils)
         setSupportActionBar(barreOutils)
+        // En haut de l'app : noms du binôme en titre, mode actif en sous-titre.
+        title = getString(
+            R.string.titre_binome,
+            Auteurs.PRENOM_AUTEUR_1, Auteurs.NOM_AUTEUR_1,
+            Auteurs.PRENOM_AUTEUR_2, Auteurs.NOM_AUTEUR_2
+        )
 
         // Écran bord à bord (obligatoire avec targetSdk 35+) : on évite les barres système.
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.racine)) { vue, insets ->
