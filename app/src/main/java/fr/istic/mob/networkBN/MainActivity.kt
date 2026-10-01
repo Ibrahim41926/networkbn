@@ -77,7 +77,8 @@ class MainActivity : AppCompatActivity() {
         viewModel.grapheObservable.observe(this) { vueGraphe.graphe = it }
         viewModel.connexionProvisoire.observe(this) { vueGraphe.connexionProvisoire = it }
         viewModel.mode.observe(this) { mode ->
-            barreOutils.subtitle = getString(libelleMode(mode))
+            barreOutils.subtitle = getString(R.string.sous_titre_mode, getString(libelleMode(mode)))
+
             invalidateOptionsMenu()
         }
     }
