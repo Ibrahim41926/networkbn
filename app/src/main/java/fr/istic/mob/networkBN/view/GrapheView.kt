@@ -62,6 +62,13 @@ class GrapheView @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Objet en cours de déplacement, ou null. */
+    var objetDeplace: Objet? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     // ---------------- Dimensions (dp / sp -> px) ----------------
 
     private fun dp(valeur: Float) =
@@ -99,7 +106,14 @@ class GrapheView @JvmOverloads constructor(
         color = Color.WHITE
     }
 
-    private val pinceauBulle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    /** Anneau ambre semi-transparent autour de l'objet sélectionné (il garde sa couleur). */
+    private val pinceauSelection = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(6f)
+        color = Color.argb(170, 255, 193, 7)
+    }
+
+    private val pinceauBulle =Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(230, 255, 255, 255)
     }
@@ -142,14 +156,21 @@ class GrapheView @JvmOverloads constructor(
         }
 
         // 3. Objets, dans l'ordre de la liste (dernier = premier plan).
-        for (objet in g.objets) dessinerObjet(canvas, objet)
+        // Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
+        val selectionne = objetDeplace ?: connexionProvisoire?.source
+        for (objet in g.objets) dessinerObjet(canvas, objet, objet == selectionne)
     }
 
-    private fun dessinerObjet(canvas: Canvas, objet: Objet) {
+    private fun dessinerObjet(canvas: Canvas, objet: Objet, selectionne: Boolean) {
         val x = objet.position.x
         val y = objet.position.y
 
-        pinceauObjet.color = objet.couleur
+        if (selectionne) {
+            // Anneau à l'extérieur du contour blanc.
+            val rayonAnneau = rayonObjet + pinceauContour.strokeWidth / 2 + pinceauSelection.strokeWidth / 2
+            canvas.drawCircle(x, y, rayonAnneau, pinceauSelection)
+        }
+        pinceauObjet.color = objet.couleur.argb
         canvas.drawCircle(x, y, rayonObjet, pinceauObjet)
         canvas.drawCircle(x, y, rayonObjet, pinceauContour)
 

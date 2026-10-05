@@ -3,6 +3,7 @@ package fr.istic.mob.networkBN.viewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
 
@@ -28,7 +29,11 @@ class GraphViewModel : ViewModel() {
     private val graphe = Graph()
 
     /** Geste en cours en mode MODIFICATION : l'objet tenu par le doigt (ou aucun). */
-    private var objetSelectionne: Objet? = null
+    private var objetSelectionne: Objet?
+        get() = _objetDeplace.value
+        set(value) {
+            if (_objetDeplace.value != value) _objetDeplace.value = value
+        }
 
     /** Décalage doigt → centre, mémorisé au début du glissement (évite le « saut »). */
     private var decalageX = 0f // decalage entre le doigt et lobjet selectionner sur laxe x
@@ -50,6 +55,10 @@ class GraphViewModel : ViewModel() {
 
     private val _connexionProvisoire = MutableLiveData<ConnexionProvisoire?>(null)
     val connexionProvisoire: LiveData<ConnexionProvisoire?> = _connexionProvisoire
+
+    /** Objet en cours de déplacement (mode MODIFICATION), pour le mettre en évidence. */
+    private val _objetDeplace = MutableLiveData<Objet?>(null)
+    val objetDeplace: LiveData<Objet?> = _objetDeplace
 
     /** Raccourci pour lire le mode actuel. */
     private val modeCourant: ModeEdition
@@ -99,9 +108,9 @@ class GraphViewModel : ViewModel() {
      * L'utilisateur a validé la boîte de saisie.
      * @return false si refusé (étiquette vide...) : la Vue peut garder la boîte ouverte.
      */
-    fun validerEtiquette(texte: String, x: Float, y: Float): Boolean {
+    fun validerEtiquette(texte: String, x: Float, y: Float, couleur: CouleurObjet): Boolean {
         if (modeCourant != ModeEdition.AJOUT_OBJET) return false   // 1. mode
-        graphe.addObjet(texte, x, y) ?: return false                // 2. modèle (règles)
+        graphe.addObjet(texte, x, y, couleur) ?: return false       // 2. modèle (règles)
         publierGraphe()                                              // 3. publier
         return true
     }

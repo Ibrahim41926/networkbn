@@ -58,10 +58,15 @@ class Graph {
     // ---------------- Opérations ----------------
 
     /** @return l'objet créé, ou null si étiquette vide ou position hors du plan. */
-    fun addObjet(etiquette: String, x: Float, y: Float): Objet? {
+    fun addObjet(
+        etiquette: String,
+        x: Float,
+        y: Float,
+        couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT
+    ): Objet? {
         val propre = etiquette.trim()
         if (propre.isEmpty() || !estDansLePlan(x, y)) return null
-        val objet = Objet(prochainId++, propre, Coordonnee(x, y))
+        val objet = Objet(prochainId++, propre, Coordonnee(x, y), couleur)
         _objets.add(objet)
         return objet
     }
