@@ -121,6 +121,12 @@ class GrapheView @JvmOverloads constructor(
         color = Color.argb(230, 255, 255, 255)
     }
 
+    /** V2 : contour de la bulle d'étiquette d'une connexion (couleur de la connexion). */
+    private val pinceauBordBulle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(1.5f)
+    }
+
     private val pinceauTexte = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
         textSize = sp(13f)
@@ -152,6 +158,15 @@ class GrapheView @JvmOverloads constructor(
             canvas.drawLine(a.x, a.y, b.x, b.y, pinceauConnexion)
         }
 
+        // V2 : étiquettes des connexions, au milieu du trait (au-dessus des traits, sous les objets).
+        for (connexion in g.connexions) {
+            val a = connexion.extremite1.position
+            val b = connexion.extremite2.position
+            pinceauBordBulle.color = connexion.couleur.argb
+            val hauteurBulle = hauteurBulle()
+            dessinerBulle(canvas, connexion.etiquette, (a.x + b.x) / 2, (a.y + b.y) / 2 - hauteurBulle / 2, pinceauBordBulle)
+        }
+
         // 2. Connexion en cours de tracé.
         connexionProvisoire?.let {
             val depart = it.source.position
@@ -178,18 +193,31 @@ class GrapheView @JvmOverloads constructor(
         canvas.drawCircle(x, y, rayonObjet, pinceauContour)
 
         // Étiquette dans une bulle, sous le cercle.
+        dessinerBulle(canvas, objet.etiquette, x, y + rayonObjet + margeEtiquette)
+    }
+
+    /** V2 : hauteur d'une bulle d'étiquette (texte + marge). */
+    private fun hauteurBulle(): Float {
         val metriques = pinceauTexte.fontMetrics
-        val largeurTexte = pinceauTexte.measureText(objet.etiquette)
-        val hauteurTexte = metriques.descent - metriques.ascent
-        val haut = y + rayonObjet + margeEtiquette
+        return metriques.descent - metriques.ascent + margeEtiquette
+    }
+
+    /**
+     * Étiquette dans une bulle blanche centrée horizontalement sur [x], de bord supérieur [haut].
+     * V2 : partagée par les objets et les connexions ; [bord] = contour optionnel de la bulle.
+     */
+    private fun dessinerBulle(canvas: Canvas, texte: String, x: Float, haut: Float, bord: Paint? = null) {
+        val metriques = pinceauTexte.fontMetrics
+        val largeurTexte = pinceauTexte.measureText(texte)
         rectBulle.set(
             x - largeurTexte / 2 - margeEtiquette,
             haut,
             x + largeurTexte / 2 + margeEtiquette,
-            haut + hauteurTexte + margeEtiquette
+            haut + hauteurBulle()
         )
         canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, pinceauBulle)
-        canvas.drawText(objet.etiquette, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
+        bord?.let { canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, it) }
+        canvas.drawText(texte, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
     }
 
     // ---------------- Gestes ----------------
