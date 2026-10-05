@@ -1,17 +1,10 @@
 package fr.istic.mob.networkBN
 
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
-import android.util.TypedValue
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -19,13 +12,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Objet
 import fr.istic.mob.networkBN.view.GrapheView
+import fr.istic.mob.networkBN.view.SelecteurCouleur
 import fr.istic.mob.networkBN.viewModel.GraphViewModel
 import fr.istic.mob.networkBN.viewModel.ModeEdition
 
@@ -46,10 +40,17 @@ class MainActivity : AppCompatActivity() {
 
     private var dialogueEtiquette: AlertDialog? = null
     private var champEtiquette: TextInputEditText? = null
-    /** Couleur choisie dans la boîte de saisie ouverte (non mémorisée d'une ouverture à l'autre). */
-    private var couleurChoisie: CouleurObjet = CouleurObjet.PAR_DEFAUT
-    private var pastilles: Map<CouleurObjet, ImageView> = emptyMap()
+    /** V2 : pastilles de la boîte « Nouvel objet » ouverte (couleur non mémorisée d'une ouverture à l'autre). */
+    private var selecteurObjet: SelecteurCouleur? = null
     private var dialogueReinitialiser: AlertDialog? = null
+
+    /** V2 : boîte « Nouvelle connexion » (ouverte tant que le ViewModel a une connexion en attente). */
+    private var dialogueConnexion: AlertDialog? = null
+    private var champConnexion: TextInputEditText? = null
+    private var selecteurConnexion: SelecteurCouleur? = null
+    /** V2 : texte et couleur saisis avant une rotation, remis dans la boîte recréée. */
+    private var texteConnexionRestaure: String = ""
+    private var couleurConnexionRestauree: CouleurObjet = Connexion.COULEUR_PAR_DEFAUT
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -88,7 +89,16 @@ class MainActivity : AppCompatActivity() {
         // Le ViewModel republie la même instance : l'observateur est appelé à chaque fois.
         viewModel.grapheObservable.observe(this) { vueGraphe.graphe = it }
         viewModel.connexionProvisoire.observe(this) { vueGraphe.connexionProvisoire = it }
-        viewModel.objetDeplace.observe(this) { vueGraphe.objetDeplace = it }
+        viewModel.objetDeplace.observe(this) { vueGraphe.objetDeplace = it } // V2 : anneau de sélection
+        // V2 : la boîte « Nouvelle connexion » suit l'état du ViewModel (donc survit à la rotation).
+        viewModel.connexionEnAttente.observe(this) { attente ->
+            if (attente != null) {
+                if (dialogueConnexion == null) ouvrirSaisieConnexion()
+            } else {
+                dialogueConnexion?.dismiss()
+                fermerSaisieConnexion()
+            }
+        }
         viewModel.mode.observe(this) { mode ->
             barreOutils.subtitle = getString(R.string.sous_titre_mode, getString(libelleMode(mode)))
 
@@ -154,7 +164,7 @@ class MainActivity : AppCompatActivity() {
         x: Float,
         y: Float,
         texteInitial: String = "",
-        couleurInitiale: CouleurObjet = CouleurObjet.PAR_DEFAUT
+        couleurInitiale: CouleurObjet = CouleurObjet.PAR_DEFAUT // V2
     ) {
         saisieX = x
         saisieY = y
@@ -164,8 +174,9 @@ class MainActivity : AppCompatActivity() {
         val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette)
         champ.setText(texteInitial)
         champEtiquette = champ
-        couleurChoisie = couleurInitiale
-        remplirPastilles(contenu.findViewById(R.id.pastilles_couleur))
+        // V2 : choix de la couleur (vert à l'ouverture, ou couleur restaurée après rotation).
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur), couleurInitiale)
+        selecteurObjet = selecteur
 
         val dialogue = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.titre_ajout_objet)
@@ -177,7 +188,7 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         val valider = {
-            if (viewModel.validerEtiquette(champ.text?.toString().orEmpty(), x, y, couleurChoisie)) {
+            if (viewModel.validerEtiquette(champ.text?.toString().orEmpty(), x, y, selecteur.couleur)) {
                 dialogue.dismiss()
                 fermerSaisieEtiquette()
             } else {
@@ -208,75 +219,64 @@ class MainActivity : AppCompatActivity() {
         saisieY = null
         dialogueEtiquette = null
         champEtiquette = null
-        couleurChoisie = CouleurObjet.PAR_DEFAUT
-        pastilles = emptyMap()
+        // V2 : la couleur n'est pas mémorisée pour la prochaine ouverture.
+        selecteurObjet = null
     }
 
-    // ---------------- Pastilles de couleur ----------------
+    // ---------------- V2 : boîte « Nouvelle connexion » ----------------
 
-    private fun dpEnPx(valeur: Float): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, valeur, resources.displayMetrics).toInt()
+    private fun ouvrirSaisieConnexion() {
+        val contenu = layoutInflater.inflate(R.layout.dialogue_etiquette_connexion, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_etiquette_connexion)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette_connexion)
+        champ.setText(texteConnexionRestaure)
+        texteConnexionRestaure = ""
+        champConnexion = champ
+        // V2 : choix de la couleur de la connexion (bleu à l'ouverture, ou restaurée après rotation).
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur_connexion), couleurConnexionRestauree)
+        couleurConnexionRestauree = Connexion.COULEUR_PAR_DEFAUT
+        selecteurConnexion = selecteur
 
-    /** Une pastille ronde par couleur, réparties sur la largeur ; un clic sélectionne. */
-    private fun remplirPastilles(ligne: LinearLayout) {
-        val taille = dpEnPx(TAILLE_PASTILLE_DP)
-        pastilles = CouleurObjet.entries.associateWith { couleur ->
-            ImageView(this).apply {
-                contentDescription = getString(nomCouleur(couleur))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                // La coche reste à l'intérieur du disque.
-                val marge = dpEnPx(8f)
-                setPadding(marge, marge, marge, marge)
-                setOnClickListener {
-                    couleurChoisie = couleur
-                    rafraichirPastilles()
-                }
-                // Cellule de largeur égale, pastille de taille fixe centrée dedans.
-                val cellule = FrameLayout(this@MainActivity)
-                cellule.addView(this, FrameLayout.LayoutParams(taille, taille, Gravity.CENTER))
-                ligne.addView(cellule, LinearLayout.LayoutParams(0, taille, 1f))
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_ajout_connexion)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            // Annuler, retour ou clic hors de la boîte : le ViewModel efface l'aperçu,
+            // puis l'observateur ferme la boîte.
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> viewModel.annulerConnexionEnAttente() }
+            .setOnCancelListener { viewModel.annulerConnexionEnAttente() }
+            .create()
+
+        // Si accepté, l'observateur de connexionEnAttente ferme la boîte.
+        val valider = {
+            if (!viewModel.validerEtiquetteConnexion(champ.text?.toString().orEmpty(), selecteur.couleur)) {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
             }
         }
-        rafraichirPastilles()
-    }
 
-    /** Met à jour l'aspect des pastilles selon [couleurChoisie]. */
-    private fun rafraichirPastilles() {
-        val couleurContour = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorOnSurface, "colorOnSurface"
-        )
-        for ((couleur, pastille) in pastilles) {
-            val choisie = couleur == couleurChoisie
-            val disque = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(couleur.argb)
-            }
-            pastille.background = if (choisie) {
-                // Contour épais, séparé du disque par un petit espace (visible même sur le noir).
-                val anneau = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setStroke(dpEnPx(3f), couleurContour)
-                }
-                LayerDrawable(arrayOf(anneau, disque)).apply {
-                    val retrait = dpEnPx(5f)
-                    setLayerInset(1, retrait, retrait, retrait, retrait)
-                }
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
             } else {
-                disque
+                false
             }
-            pastille.setImageResource(if (choisie) R.drawable.ic_coche else 0)
-            pastille.isSelected = choisie
         }
+
+        dialogue.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialogue.show()
+        champ.requestFocus()
+        dialogueConnexion = dialogue
     }
 
-    private fun nomCouleur(couleur: CouleurObjet): Int = when (couleur) {
-        CouleurObjet.ROUGE -> R.string.couleur_rouge
-        CouleurObjet.VERT -> R.string.couleur_vert
-        CouleurObjet.BLEU -> R.string.couleur_bleu
-        CouleurObjet.ORANGE -> R.string.couleur_orange
-        CouleurObjet.CYAN -> R.string.couleur_cyan
-        CouleurObjet.MAGENTA -> R.string.couleur_magenta
-        CouleurObjet.NOIR -> R.string.couleur_noir
+    private fun fermerSaisieConnexion() {
+        dialogueConnexion = null
+        champConnexion = null
+        selecteurConnexion = null // V2 : couleur non mémorisée pour la prochaine ouverture
     }
 
     // ---------------- Confirmation de réinitialisation ----------------
@@ -304,9 +304,12 @@ class MainActivity : AppCompatActivity() {
             outState.putFloat(CLE_SAISIE_X, x)
             outState.putFloat(CLE_SAISIE_Y, y)
             outState.putString(CLE_SAISIE_TEXTE, champEtiquette?.text?.toString().orEmpty())
-            outState.putString(CLE_SAISIE_COULEUR, couleurChoisie.id)
+            selecteurObjet?.let { outState.putString(CLE_SAISIE_COULEUR, it.couleur.id) } // V2
         }
         outState.putBoolean(CLE_CONFIRMATION, dialogueReinitialiser != null)
+        // V2 : la connexion en attente est dans le ViewModel ; seuls le texte et la couleur sont à sauver.
+        champConnexion?.let { outState.putString(CLE_CONNEXION_TEXTE, it.text?.toString().orEmpty()) }
+        selecteurConnexion?.let { outState.putString(CLE_CONNEXION_COULEUR, it.couleur.id) }
     }
 
     private fun restaurerDialogues(etat: Bundle?) {
@@ -316,16 +319,20 @@ class MainActivity : AppCompatActivity() {
                 etat.getFloat(CLE_SAISIE_X),
                 etat.getFloat(CLE_SAISIE_Y),
                 etat.getString(CLE_SAISIE_TEXTE).orEmpty(),
-                CouleurObjet.depuisId(etat.getString(CLE_SAISIE_COULEUR))
+                CouleurObjet.depuisId(etat.getString(CLE_SAISIE_COULEUR)) // V2
             )
         }
         if (etat.getBoolean(CLE_CONFIRMATION)) ouvrirConfirmationReinitialiser()
+        // V2 : la boîte elle-même est rouverte par l'observateur de connexionEnAttente.
+        texteConnexionRestaure = etat.getString(CLE_CONNEXION_TEXTE).orEmpty()
+        etat.getString(CLE_CONNEXION_COULEUR)?.let { couleurConnexionRestauree = CouleurObjet.depuisId(it) }
     }
 
     override fun onDestroy() {
         // Évite les fuites de fenêtre ; l'état a déjà été sauvegardé dans onSaveInstanceState.
         dialogueEtiquette?.dismiss()
         dialogueReinitialiser?.dismiss()
+        dialogueConnexion?.dismiss() // V2 : dismiss (pas cancel) : la connexion reste en attente
         super.onDestroy()
     }
 
@@ -333,8 +340,9 @@ class MainActivity : AppCompatActivity() {
         const val CLE_SAISIE_X = "saisie_x"
         const val CLE_SAISIE_Y = "saisie_y"
         const val CLE_SAISIE_TEXTE = "saisie_texte"
-        const val CLE_SAISIE_COULEUR = "saisie_couleur"
-        const val TAILLE_PASTILLE_DP = 28f
+        const val CLE_SAISIE_COULEUR = "saisie_couleur" // V2
         const val CLE_CONFIRMATION = "confirmation_reinitialiser"
+        const val CLE_CONNEXION_TEXTE = "connexion_texte" // V2
+        const val CLE_CONNEXION_COULEUR = "connexion_couleur" // V2
     }
 }

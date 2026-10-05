@@ -10,6 +10,7 @@
     <string name="indice_etiquette">Étiquette</string>
     <string name="erreur_etiquette_vide">L\'étiquette ne peut pas être vide</string>
 
+    <!-- V2 : choix de la couleur d'un objet. -->
     <string name="libelle_couleur">Couleur</string>
     <string name="couleur_rouge">Rouge</string>
     <string name="couleur_vert">Vert</string>
@@ -18,6 +19,9 @@
     <string name="couleur_cyan">Cyan</string>
     <string name="couleur_magenta">Magenta</string>
     <string name="couleur_noir">Noir</string>
+
+    <!-- V2 : étiquette obligatoire à la création d'une connexion. -->
+    <string name="titre_ajout_connexion">Nouvelle connexion</string>
 
     <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
     <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>

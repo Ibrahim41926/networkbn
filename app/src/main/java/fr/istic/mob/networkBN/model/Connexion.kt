@@ -6,17 +6,18 @@ package fr.istic.mob.networkBN.model
  * - Immuable.
  * - Extrémités = RÉFÉRENCES vers des [Objet] : si un objet bouge,
  *   la connexion suit sans rien recalculer.
- * - [etiquette], [epaisseur], [couleur] préparent la partie 2
- *   (étiquette à null en partie 1).
+ * - V2 : [etiquette] obligatoire, saisie par l'utilisateur (non vide, trimée, non traduite).
+ * - V2 : [couleur] choisie à la création, parmi les mêmes couleurs que les objets ([CouleurObjet]).
+ * - [epaisseur] prépare la partie 2.
  *
  * Constructeur `internal` : seul [Graph.addConnexion] crée des connexions.
  */
 class Connexion internal constructor(
     val extremite1: Objet,
     val extremite2: Objet,
-    val etiquette: String? = null,
+    val etiquette: String, // V2 : obligatoire (était String? = null en partie 1)
     val epaisseur: Float = EPAISSEUR_PAR_DEFAUT,
-    val couleur: Int = COULEUR_PAR_DEFAUT
+    val couleur: CouleurObjet = COULEUR_PAR_DEFAUT // V2 : choisie à la création (mêmes couleurs que les objets)
 ) {
 
     init {
@@ -41,7 +42,7 @@ class Connexion internal constructor(
 
     companion object {
         const val EPAISSEUR_PAR_DEFAUT: Float = 8f
-        /** Bleu (0xFF2163B4). */
-        val COULEUR_PAR_DEFAUT: Int = 0xFF2163B4.toInt()
+        /** V2 : bleu, présélectionné dans la boîte « Nouvelle connexion ». */
+        val COULEUR_PAR_DEFAUT: CouleurObjet = CouleurObjet.BLEU
     }
 }

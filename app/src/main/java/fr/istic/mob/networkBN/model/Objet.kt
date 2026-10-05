@@ -6,7 +6,7 @@ package fr.istic.mob.networkBN.model
  *  - [id]        : identifiant STABLE et unique, attribué par [Graph] (jamais réutilisé).
  *  - [etiquette] : texte saisi par l'utilisateur (non vide, non traduit).
  *  - [position]  : centre de l'objet, dans le repère du plan.
- *  - [couleur]   : couleur choisie à la création (vert par défaut).
+ *  - [couleur]   : V2 : couleur choisie à la création (vert par défaut).
  *
  * Constructeur `internal` : seul [Graph.addObjet] crée des objets.
  */
