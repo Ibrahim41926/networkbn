@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.util.TypedValue
@@ -14,6 +15,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import fr.istic.mob.networkBN.R
+import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
 import fr.istic.mob.networkBN.viewModel.ConnexionProvisoire
@@ -35,7 +37,7 @@ class GrapheView @JvmOverloads constructor(
     /** Gestes transmis à l'Activity, qui les relaie au ViewModel. */
     interface EcouteurGestes {
         fun appuiLong(x: Float, y: Float, objetTouche: Objet?)
-        fun debutGlissement(x: Float, y: Float, objetTouche: Objet?)
+        fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?)
         fun glissement(x: Float, y: Float)
         fun finGlissement(objetSousLeDoigt: Objet?)
         fun gesteAnnule()
@@ -83,6 +85,9 @@ class GrapheView @JvmOverloads constructor(
     private val margeEtiquette = dp(4f)
     private val rayonBulle = dp(6f)
 
+    /** Décalage de l'étiquette d'une connexion par rapport au point P, pour ne pas cacher le trait. */
+    private val decalageEtiquetteConnexion = dp(14f)
+
     // ---------------- Pinceaux ----------------
 
     private val pinceauConnexion = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -113,7 +118,7 @@ class GrapheView @JvmOverloads constructor(
         color = Color.argb(170, 255, 193, 7)
     }
 
-    private val pinceauBulle =Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val pinceauBulle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(230, 255, 255, 255)
     }
@@ -126,6 +131,9 @@ class GrapheView @JvmOverloads constructor(
 
     /** Réutilisé à chaque dessin (pas d'allocation dans onDraw). */
     private val rectBulle = RectF()
+
+    /** Chemin réutilisé pour dessiner chaque connexion (pas d'allocation dans onDraw). */
+    private val chemin = Path()
 
     // ---------------- Taille ----------------
 
@@ -140,22 +148,34 @@ class GrapheView @JvmOverloads constructor(
         canvas.drawBitmap(plan, 0f, 0f, null)
         val g = graphe ?: return
 
-        // 1. Connexions (sous les objets).
+        // 1. Connexions (sous les objets) : courbe de Bézier quadratique A -> C -> B.
+        //    Flèche nulle : C = M, la courbe est une ligne droite.
         for (connexion in g.connexions) {
             pinceauConnexion.color = connexion.couleur
             pinceauConnexion.strokeWidth = connexion.epaisseur
             val a = connexion.extremite1.position
             val b = connexion.extremite2.position
-            canvas.drawLine(a.x, a.y, b.x, b.y, pinceauConnexion)
+            val (cx, cy) = connexion.pointControle()
+            chemin.reset()
+            chemin.moveTo(a.x, a.y)
+            chemin.quadTo(cx, cy, b.x, b.y)
+            canvas.drawPath(chemin, pinceauConnexion)
         }
 
-        // 2. Connexion en cours de tracé.
+        // 2. Étiquettes des connexions, près du point P.
+        for (connexion in g.connexions) {
+            val texte = connexion.etiquette ?: continue
+            val (ex, ey) = positionEtiquette(connexion)
+            dessinerBulleCentree(canvas, texte, ex, ey)
+        }
+
+        // 3. Connexion en cours de tracé.
         connexionProvisoire?.let {
             val depart = it.source.position
             canvas.drawLine(depart.x, depart.y, it.xDoigt, it.yDoigt, pinceauProvisoire)
         }
 
-        // 3. Objets, dans l'ordre de la liste (dernier = premier plan).
+        // 4. Objets, dans l'ordre de la liste (dernier = premier plan).
         // Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
         val selectionne = objetDeplace ?: connexionProvisoire?.source
         for (objet in g.objets) dessinerObjet(canvas, objet, objet == selectionne)
@@ -189,11 +209,40 @@ class GrapheView @JvmOverloads constructor(
         canvas.drawText(objet.etiquette, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
     }
 
+    /**
+     * Centre de l'étiquette d'une connexion : P décalé du côté de la courbure.
+     * Utilisé pour le dessin ET pour le toucher, donc les deux restent cohérents.
+     */
+    private fun positionEtiquette(connexion: Connexion): Pair<Float, Float> {
+        val (px, py) = connexion.pointMilieuCourbe()
+        val (nx, ny) = connexion.normale()
+        val cote = if (connexion.fleche >= 0f) 1f else -1f
+        return px + nx * cote * decalageEtiquetteConnexion to py + ny * cote * decalageEtiquetteConnexion
+    }
+
+    /** Texte dans une bulle blanche centrée sur (cx, cy). */
+    private fun dessinerBulleCentree(canvas: Canvas, texte: String, cx: Float, cy: Float) {
+        val metriques = pinceauTexte.fontMetrics
+        val demiLargeur = pinceauTexte.measureText(texte) / 2 + margeEtiquette
+        val demiHauteur = (metriques.descent - metriques.ascent) / 2 + margeEtiquette / 2
+        rectBulle.set(cx - demiLargeur, cy - demiHauteur, cx + demiLargeur, cy + demiHauteur)
+        canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, pinceauBulle)
+        // Ligne de base choisie pour que le texte soit centré verticalement.
+        canvas.drawText(texte, cx, cy - (metriques.ascent + metriques.descent) / 2, pinceauTexte)
+    }
+
     // ---------------- Gestes ----------------
 
     /** Objet sous le point (x, y), le plus au premier plan d'abord ; null si fond. */
     fun objetSous(x: Float, y: Float): Objet? =
         graphe?.objets?.lastOrNull { hypot(it.position.x - x, it.position.y - y) <= rayonTouche }
+
+    /** Connexion dont l'étiquette (ou le point P) est sous (x, y), la plus au premier plan d'abord. */
+    fun connexionSous(x: Float, y: Float): Connexion? =
+        graphe?.connexions?.lastOrNull {
+            val (ex, ey) = positionEtiquette(it)
+            hypot(ex - x, ey - y) <= rayonTouche
+        }
 
     private val detecteurAppuiLong = GestureDetector(
         context,
@@ -213,10 +262,12 @@ class GrapheView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // Priorité : les objets, puis les étiquettes de connexion.
                 val objet = objetSous(x, y)
-                // Doigt posé sur un objet : les ScrollView parentes ne doivent pas défiler.
-                if (objet != null) parent?.requestDisallowInterceptTouchEvent(true)
-                ecouteur?.debutGlissement(x, y, objet)
+                val connexion = if (objet == null) connexionSous(x, y) else null
+                // Doigt posé sur une cible : les ScrollView parentes ne doivent pas défiler.
+                if (objet != null || connexion != null) parent?.requestDisallowInterceptTouchEvent(true)
+                ecouteur?.debutGlissement(x, y, objet, connexion)
             }
             MotionEvent.ACTION_MOVE -> ecouteur?.glissement(x, y)
             MotionEvent.ACTION_UP -> {

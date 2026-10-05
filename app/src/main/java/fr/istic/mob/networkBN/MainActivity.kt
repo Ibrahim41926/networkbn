@@ -23,6 +23,7 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Objet
 import fr.istic.mob.networkBN.view.GrapheView
@@ -109,8 +110,8 @@ class MainActivity : AppCompatActivity() {
             if (viewModel.peutAjouterObjet(x, y, objetTouche)) ouvrirSaisieEtiquette(x, y)
         }
 
-        override fun debutGlissement(x: Float, y: Float, objetTouche: Objet?) =
-            viewModel.debutGlissement(x, y, objetTouche)
+        override fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) =
+            viewModel.debutGlissement(x, y, objetTouche, connexionTouchee)
 
         override fun glissement(x: Float, y: Float) = viewModel.glissement(x, y)
 

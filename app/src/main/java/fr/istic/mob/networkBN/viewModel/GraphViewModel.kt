@@ -7,6 +7,9 @@ import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
 
+import fr.istic.mob.networkBN.model.Connexion
+import kotlin.math.abs
+
 /**
  * Le « serveur » entre la Vue et le Modèle.
  *
@@ -38,6 +41,12 @@ class GraphViewModel : ViewModel() {
     /** Décalage doigt → centre, mémorisé au début du glissement (évite le « saut »). */
     private var decalageX = 0f // decalage entre le doigt et lobjet selectionner sur laxe x
     private var decalageY = 0f // decalage entre le doigt et lobjet selectionner sur laxe y
+
+    /** Geste en cours en mode MODIFICATION : connexion dont on tire l'étiquette (ou aucune). */
+    private var connexionCourbee: Connexion? = null
+    /** Dernière position du doigt, pour calculer le déplacement (deltaX, deltaY). */
+    private var dernierX = 0f
+    private var dernierY = 0f
 
     // =====================================================================
     // 2. VITRINE (ce que la Vue observe pour se dessiner)
@@ -117,14 +126,29 @@ class GraphViewModel : ViewModel() {
 
     // ---------- Glissement ----------
 
-    /** Le doigt se pose en (x, y). [objetTouche] = objet sous le doigt, ou null. */
-    fun debutGlissement(x: Float, y: Float, objetTouche: Objet?) {
-        annulerGeste()                                   // on repart d'un état propre en annulant tout geste precedent
-        if (objetTouche == null) return                  // si on ai sur le fond  : aucune action
-        if (objetTouche !in graphe.objets) return        //si on ai sur un objet qui n'est pas dans le grpahe : aucune action
+        /**
+     * Le doigt se pose en (x, y).
+     * [objetTouche] = objet sous le doigt, [connexionTouchee] = étiquette de connexion sous le doigt.
+     * Les objets sont prioritaires : la Vue ne donne une connexion que si aucun objet n'est touché.
+     */
+    fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) {
+        annulerGeste()
+
+        // Glissement d'une étiquette de connexion en mode MODIFICATION : on change la courbure.
+        if (modeCourant == ModeEdition.MODIFICATION && objetTouche == null &&
+            connexionTouchee != null && connexionTouchee in graphe.connexions
+        ) {
+            connexionCourbee = connexionTouchee
+            dernierX = x
+            dernierY = y
+            return
+        }
+
+        if (objetTouche == null) return
+        if (objetTouche !in graphe.objets) return
 
         when (modeCourant) {
-            ModeEdition.MODIFICATION -> {   //
+            ModeEdition.MODIFICATION -> {
                 objetSelectionne = objetTouche
                 decalageX = objetTouche.position.x - x
                 decalageY = objetTouche.position.y - y
@@ -132,20 +156,28 @@ class GraphViewModel : ViewModel() {
             ModeEdition.AJOUT_CONNEXION -> {
                 _connexionProvisoire.value = ConnexionProvisoire(objetTouche, x, y)
             }
-            ModeEdition.AJOUT_OBJET -> Unit   // géré par peutAjouterObjet (appui long)
+            ModeEdition.AJOUT_OBJET -> Unit
         }
     }
+
 
     /** Le doigt bouge en (x, y). */
     fun glissement(x: Float, y: Float) {
         when (modeCourant) {
-            ModeEdition.MODIFICATION -> {
-                val objet = objetSelectionne ?: return
-                // Nouveau centre = doigt + décalage. Le modèle borne au cadre de l'image.
-                if (graphe.modifiePosition(objet, x + decalageX, y + decalageY)) {
-                    publierGraphe()
+                ModeEdition.MODIFICATION -> {
+                val connexion = connexionCourbee
+                if (connexion != null) {
+                    // On garde seulement la partie du déplacement perpendiculaire à AB.
+                    val (nx, ny) = connexion.normale()
+                    val nouvelleFleche = connexion.fleche + (x - dernierX) * nx + (y - dernierY) * ny
+                    dernierX = x
+                    dernierY = y
+                    if (graphe.modifierFleche(connexion, nouvelleFleche)) publierGraphe()
+                    return
                 }
+                val objet = objetSelectionne ?: return
             }
+
             ModeEdition.AJOUT_CONNEXION -> { // lors du glissement
                                             // on recree la connexion provisoire en modifiant la position du doigt
                 val provisoire = _connexionProvisoire.value ?: return
@@ -170,6 +202,11 @@ class GraphViewModel : ViewModel() {
                 publierGraphe()     // on signale ensuite la
             }
         }
+
+        connexionCourbee?.let {
+            if (abs(it.fleche) < SEUIL_REDRESSEMENT && graphe.modifierFleche(it, 0f)) publierGraphe()
+        }
+
         annulerGeste()
     }
 
@@ -179,6 +216,7 @@ class GraphViewModel : ViewModel() {
      * Un objet déplacé garde sa dernière position valide.
      */
     fun annulerGeste() {
+        connexionCourbee = null
         objetSelectionne = null
         if (_connexionProvisoire.value != null) {  // le if est utile sinon on pousse le live data a prevnir toute les vues meme si il ya ps de connexion provisoire
             _connexionProvisoire.value = null
@@ -193,4 +231,11 @@ class GraphViewModel : ViewModel() {
         graphe.resetAll()   // vide le graphe
         publierGraphe() // on fait savoir a la view que le graphe a change
     }
+
+
+    private companion object {
+        /** En dessous de cette flèche (en pixels du plan), on remet la connexion droite. */
+        const val SEUIL_REDRESSEMENT = 20f
+    }
+
 }

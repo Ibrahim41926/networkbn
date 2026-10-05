@@ -100,4 +100,15 @@ class Graph {
         _connexions.clear()
         _objets.clear()
     }
+
+        /**
+     * Change la courbure d'une connexion (0 = droite).
+     * @return false si la connexion n'appartient pas au graphe.
+     */
+    fun modifierFleche(connexion: Connexion, fleche: Float): Boolean {
+        if (connexion !in _connexions) return false
+        connexion.fleche = fleche
+        return true
+    }
+
 }
