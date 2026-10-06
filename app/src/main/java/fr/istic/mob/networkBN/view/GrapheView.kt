@@ -117,7 +117,7 @@ class GrapheView @JvmOverloads constructor(
      */
     private val pinceauSelection = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dp(6f) // V2 : épaisseur de l'anneau de sélection
+        strokeWidth = dp(6f)
         color = Color.argb(170, 255, 193, 7)
     }
 
@@ -160,7 +160,7 @@ class GrapheView @JvmOverloads constructor(
         // 1. Connexions (sous les objets) : courbe de Bézier quadratique A -> C -> B.
         //    Flèche nulle : C = M, la courbe est une ligne droite.
         for (connexion in g.connexions) {
-            pinceauConnexion.color = connexion.couleur.argb // V2 : couleur choisie à la création
+            pinceauConnexion.color = connexion.couleur.argb
             pinceauConnexion.strokeWidth = connexion.epaisseur
             val a = connexion.extremite1.position
             val b = connexion.extremite2.position
@@ -171,20 +171,13 @@ class GrapheView @JvmOverloads constructor(
             canvas.drawPath(chemin, pinceauConnexion)
         }
 
-        // V2 : étiquettes des connexions, au milieu du trait (au-dessus des traits, sous les objets).
-        for (connexion in g.connexions) {
-            val a = connexion.extremite1.position
-            val b = connexion.extremite2.position
-            pinceauBordBulle.color = connexion.couleur.argb
-            val hauteurBulle = hauteurBulle()
-            dessinerBulle(canvas, connexion.etiquette, (a.x + b.x) / 2, (a.y + b.y) / 2 - hauteurBulle / 2, pinceauBordBulle)
-        }
-
-        // 2. Étiquettes des connexions, près du point P.
+        // 2. Étiquettes des connexions, près du point P (bord = couleur de la connexion).
+        //    Après tous les traits, avant les objets.
         for (connexion in g.connexions) {
             val texte = connexion.etiquette ?: continue
             val (ex, ey) = positionEtiquette(connexion)
-            dessinerBulleCentree(canvas, texte, ex, ey)
+            pinceauBordBulle.color = connexion.couleur.argb
+            dessinerBulleCentree(canvas, texte, ex, ey, pinceauBordBulle)
         }
 
         // 3. Connexion en cours de tracé.
@@ -193,8 +186,8 @@ class GrapheView @JvmOverloads constructor(
             canvas.drawLine(depart.x, depart.y, it.xDoigt, it.yDoigt, pinceauProvisoire)
         }
 
-        // 3. Objets, dans l'ordre de la liste (dernier = premier plan).
-        // Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
+        // 4. Objets, dans l'ordre de la liste (dernier = premier plan).
+        //    Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
         val selectionne = objetDeplace ?: connexionProvisoire?.source
         for (objet in g.objets) dessinerObjet(canvas, objet, objet == selectionne)
     }
@@ -208,7 +201,7 @@ class GrapheView @JvmOverloads constructor(
             val rayonAnneau = rayonObjet + pinceauContour.strokeWidth / 2 + pinceauSelection.strokeWidth / 2
             canvas.drawCircle(x, y, rayonAnneau, pinceauSelection)
         }
-        pinceauObjet.color = objet.couleur.argb // V2 : couleur choisie à la création
+        pinceauObjet.color = objet.couleur.argb
         canvas.drawCircle(x, y, rayonObjet, pinceauObjet)
         canvas.drawCircle(x, y, rayonObjet, pinceauContour)
 
@@ -216,15 +209,15 @@ class GrapheView @JvmOverloads constructor(
         dessinerBulle(canvas, objet.etiquette, x, y + rayonObjet + margeEtiquette)
     }
 
-    /** V2 : hauteur d'une bulle d'étiquette (texte + marge). */
+    /** Hauteur d'une bulle d'étiquette (texte + marge). */
     private fun hauteurBulle(): Float {
         val metriques = pinceauTexte.fontMetrics
         return metriques.descent - metriques.ascent + margeEtiquette
     }
 
     /**
-     * Étiquette dans une bulle blanche centrée horizontalement sur [x], de bord supérieur [haut].
-     * V2 : partagée par les objets et les connexions ; [bord] = contour optionnel de la bulle.
+     * Étiquette d'objet dans une bulle blanche centrée horizontalement sur [x], de bord supérieur [haut].
+     * [bord] = contour optionnel de la bulle.
      */
     private fun dessinerBulle(canvas: Canvas, texte: String, x: Float, haut: Float, bord: Paint? = null) {
         val metriques = pinceauTexte.fontMetrics
@@ -251,13 +244,14 @@ class GrapheView @JvmOverloads constructor(
         return px + nx * cote * decalageEtiquetteConnexion to py + ny * cote * decalageEtiquetteConnexion
     }
 
-    /** Texte dans une bulle blanche centrée sur (cx, cy). */
-    private fun dessinerBulleCentree(canvas: Canvas, texte: String, cx: Float, cy: Float) {
+    /** Texte dans une bulle blanche centrée sur (cx, cy), avec un contour optionnel. */
+    private fun dessinerBulleCentree(canvas: Canvas, texte: String, cx: Float, cy: Float, bord: Paint? = null) {
         val metriques = pinceauTexte.fontMetrics
         val demiLargeur = pinceauTexte.measureText(texte) / 2 + margeEtiquette
         val demiHauteur = (metriques.descent - metriques.ascent) / 2 + margeEtiquette / 2
         rectBulle.set(cx - demiLargeur, cy - demiHauteur, cx + demiLargeur, cy + demiHauteur)
         canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, pinceauBulle)
+        bord?.let { canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, it) }
         // Ligne de base choisie pour que le texte soit centré verticalement.
         canvas.drawText(texte, cx, cy - (metriques.ascent + metriques.descent) / 2, pinceauTexte)
     }

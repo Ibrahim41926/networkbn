@@ -3,11 +3,10 @@ package fr.istic.mob.networkBN.viewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
-
-import fr.istic.mob.networkBN.model.Connexion
 import kotlin.math.abs
 
 /**
@@ -42,12 +41,13 @@ class GraphViewModel : ViewModel() {
         }
 
     /** Décalage doigt → centre, mémorisé au début du glissement (évite le « saut »). */
-    private var decalageX = 0f // decalage entre le doigt et lobjet selectionner sur laxe x
-    private var decalageY = 0f // decalage entre le doigt et lobjet selectionner sur laxe y
+    private var decalageX = 0f // décalage entre le doigt et l'objet sélectionné sur l'axe x
+    private var decalageY = 0f // décalage entre le doigt et l'objet sélectionné sur l'axe y
 
-    /** Geste en cours en mode MODIFICATION : connexion dont on tire l'étiquette (ou aucune). */
+    /** V2 : geste en cours en mode MODIFICATION : connexion dont on tire l'étiquette (ou aucune). */
     private var connexionCourbee: Connexion? = null
-    /** Dernière position du doigt, pour calculer le déplacement (deltaX, deltaY). */
+
+    /** V2 : dernière position du doigt, pour calculer le déplacement (deltaX, deltaY). */
     private var dernierX = 0f
     private var dernierY = 0f
 
@@ -124,10 +124,10 @@ class GraphViewModel : ViewModel() {
      * Le ViewModel DÉCIDE, mais c'est la Vue qui AFFICHE la boîte de dialogue.
      */
     fun peutAjouterObjet(x: Float, y: Float, objetTouche: Objet?): Boolean =
-        !saisieConnexionEnCours &&                  // V2 : pas pendant la saisie d'une connexion
-                modeCourant == ModeEdition.AJOUT_OBJET &&   // bon mode ?
-                objetTouche == null &&                   // pas sur un objet existant
-                graphe.estDansLePlan(x, y)               // et sur l'image du plan
+        !saisieConnexionEnCours &&                      // V2 : pas pendant la saisie d'une connexion
+            modeCourant == ModeEdition.AJOUT_OBJET &&   // bon mode ?
+            objetTouche == null &&                      // pas sur un objet existant
+            graphe.estDansLePlan(x, y)                  // et sur l'image du plan
 
     /**
      * L'utilisateur a validé la boîte de saisie.
@@ -143,34 +143,46 @@ class GraphViewModel : ViewModel() {
 
     // ---------- Glissement ----------
 
-    /** Le doigt se pose en (x, y). [objetTouche] = objet sous le doigt, ou null. */
-    fun debutGlissement(x: Float, y: Float, objetTouche: Objet?) {
-        annulerGeste()                                   // on repart d'un état propre en annulant tout geste precedent
-        if (objetTouche == null) return                  // si on ai sur le fond  : aucune action
-        if (objetTouche !in graphe.objets) return        //si on ai sur un objet qui n'est pas dans le grpahe : aucune action
+    /**
+     * Le doigt se pose en (x, y).
+     * [objetTouche] = objet sous le doigt, ou null.
+     * [connexionTouchee] = connexion dont l'étiquette est sous le doigt (seulement si aucun objet).
+     */
+    fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) {
+        if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
+        annulerGeste()                     // on repart d'un état propre
 
         when (modeCourant) {
             ModeEdition.MODIFICATION -> {
-                objetSelectionne = objetTouche
-                decalageX = objetTouche.position.x - x
-                decalageY = objetTouche.position.y - y
+                if (objetTouche != null && objetTouche in graphe.objets) {
+                    // Priorité aux objets : on se prépare à déplacer
+                    objetSelectionne = objetTouche
+                    decalageX = objetTouche.position.x - x
+                    decalageY = objetTouche.position.y - y
+                } else if (connexionTouchee != null && connexionTouchee in graphe.connexions) {
+                    // V2 : on tire l'étiquette pour courber la connexion
+                    connexionCourbee = connexionTouchee
+                    dernierX = x
+                    dernierY = y
+                }
             }
             ModeEdition.AJOUT_CONNEXION -> {
-                _connexionProvisoire.value = ConnexionProvisoire(objetTouche, x, y)
+                if (objetTouche != null && objetTouche in graphe.objets) {
+                    _connexionProvisoire.value = ConnexionProvisoire(objetTouche, x, y)
+                }
             }
-            ModeEdition.AJOUT_OBJET -> Unit
+            ModeEdition.AJOUT_OBJET -> Unit // géré par peutAjouterObjet (appui long)
         }
     }
-
 
     /** Le doigt bouge en (x, y). */
     fun glissement(x: Float, y: Float) {
         if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
         when (modeCourant) {
-                ModeEdition.MODIFICATION -> {
+            ModeEdition.MODIFICATION -> {
+                // V2 : courbure d'une connexion (seule la partie perpendiculaire à AB compte)
                 val connexion = connexionCourbee
                 if (connexion != null) {
-                    // On garde seulement la partie du déplacement perpendiculaire à AB.
                     val (nx, ny) = connexion.normale()
                     val nouvelleFleche = connexion.fleche + (x - dernierX) * nx + (y - dernierY) * ny
                     dernierX = x
@@ -178,15 +190,16 @@ class GraphViewModel : ViewModel() {
                     if (graphe.modifierFleche(connexion, nouvelleFleche)) publierGraphe()
                     return
                 }
+                // Déplacement d'un objet : nouveau centre = doigt + décalage (le modèle borne au plan)
                 val objet = objetSelectionne ?: return
+                if (graphe.modifiePosition(objet, x + decalageX, y + decalageY)) publierGraphe()
             }
-
-            ModeEdition.AJOUT_CONNEXION -> { // lors du glissement
-                                            // on recree la connexion provisoire en modifiant la position du doigt
+            ModeEdition.AJOUT_CONNEXION -> {
+                // On recrée la connexion provisoire avec la nouvelle position du doigt
                 val provisoire = _connexionProvisoire.value ?: return
                 _connexionProvisoire.value = provisoire.copy(xDoigt = x, yDoigt = y)
             }
-            ModeEdition.AJOUT_OBJET -> Unit // en mode d'ajout dobjet le glissement ne produit rien
+            ModeEdition.AJOUT_OBJET -> Unit // en mode ajout d'objet, le glissement ne produit rien
         }
     }
 
@@ -196,13 +209,13 @@ class GraphViewModel : ViewModel() {
      * V2 : elle n'est PAS encore ajoutée. Elle passe « en attente » de son étiquette
      * et l'aperçu reste affiché entre les deux objets. Sinon, le geste se termine.
      */
-    fun finGlissement(objetSousLeDoigt: Objet?) { // a la fin du glissement
+    fun finGlissement(objetSousLeDoigt: Objet?) {
         if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
         val provisoire = _connexionProvisoire.value
-        if (modeCourant == ModeEdition.AJOUT_CONNEXION && // si nous sommes en mode dajout de connexion
-            provisoire != null &&                       // et on a une connexion provisoire qui a ete dessiné
-            objetSousLeDoigt != null &&             // que cette connexion provisoire arrive sur un autre objet
-            graphe.peutConnecter(provisoire.source, objetSousLeDoigt) // V2 : connexion valide (sans rien modifier)
+        if (modeCourant == ModeEdition.AJOUT_CONNEXION &&
+            provisoire != null &&
+            objetSousLeDoigt != null &&
+            graphe.peutConnecter(provisoire.source, objetSousLeDoigt) // V2 : valide (sans rien modifier)
         ) {
             // V2 : l'aperçu est figé sur le centre de l'objet cible, puis on attend l'étiquette.
             val cible = objetSousLeDoigt.position
@@ -211,6 +224,7 @@ class GraphViewModel : ViewModel() {
             return
         }
 
+        // V2 : une connexion presque droite est redressée au relâchement.
         connexionCourbee?.let {
             if (abs(it.fleche) < SEUIL_REDRESSEMENT && graphe.modifierFleche(it, 0f)) publierGraphe()
         }
@@ -249,13 +263,15 @@ class GraphViewModel : ViewModel() {
 
     /**
      * Geste interrompu (ACTION_CANCEL), fin de geste ou changement de mode :
-     * efface la connexion provisoire et libère l'objet sélectionné.
+     * libère l'objet et la connexion tenus, efface la connexion provisoire.
      * Un objet déplacé garde sa dernière position valide.
-     * V2 : sans effet pendant la saisie d'une connexion (l'aperçu doit rester affiché).
+     * V2 : pendant la saisie d'une connexion, l'aperçu reste affiché.
      */
     fun annulerGeste() {
         objetSelectionne = null
-        if (_connexionProvisoire.value != null) {  // le if est utile sinon on pousse le live data a prevnir toute les vues meme si il ya ps de connexion provisoire
+        connexionCourbee = null
+        // Le if évite de notifier la Vue pour rien quand il n'y a pas d'aperçu.
+        if (!saisieConnexionEnCours && _connexionProvisoire.value != null) {
             _connexionProvisoire.value = null
         }
     }
@@ -263,17 +279,15 @@ class GraphViewModel : ViewModel() {
     // ---------- Réinitialisation ----------
 
     /** Après confirmation : supprime objets et connexions, garde le plan. */
-    fun reinitialiser() { // la renitialisation
+    fun reinitialiser() {
         annulerConnexionEnAttente() // V2 : abandonne une connexion en attente d'étiquette
-        annulerGeste() // annule le dernier geste
-        graphe.resetAll()   // vide le graphe
-        publierGraphe() // on fait savoir a la view que le graphe a change
+        annulerGeste()              // annule le dernier geste
+        graphe.resetAll()           // vide le graphe
+        publierGraphe()             // prévient la Vue que le graphe a changé
     }
-
 
     private companion object {
         /** En dessous de cette flèche (en pixels du plan), on remet la connexion droite. */
         const val SEUIL_REDRESSEMENT = 20f
     }
-
 }
