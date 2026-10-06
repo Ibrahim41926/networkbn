@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V2 : boîte « Nouvelle connexion » : champ Étiquette + choix de la couleur (comme « Nouvel objet »). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/cadre_etiquette_connexion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/indice_etiquette">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/champ_etiquette_connexion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- V2 : libellé « Couleur » au-dessus des pastilles. -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/libelle_couleur"
+        android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+    <!-- V2 : pastilles de couleur, ajoutées par SelecteurCouleur. -->
+    <LinearLayout
+        android:id="@+id/pastilles_couleur_connexion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal" />
+
+</LinearLayout>

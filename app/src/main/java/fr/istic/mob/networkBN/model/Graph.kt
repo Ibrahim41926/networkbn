@@ -5,6 +5,7 @@ package fr.istic.mob.networkBN.model
  * Toute opération refusée renvoie null/false et NE MODIFIE PAS le graphe.
  *
  *  1. Étiquette d'objet non vide (après suppression des espaces).
+ *     V2 : idem pour l'étiquette d'une connexion.
  *  2. Identifiants stables et uniques (jamais réutilisés).
  *  3. Centre des objets toujours dans le cadre de l'image.
  *  4. Connexions non orientées : ni boucle (A–A) ni doublon (A–B ou B–A).
@@ -62,7 +63,7 @@ class Graph {
         etiquette: String,
         x: Float,
         y: Float,
-        couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT
+        couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT // V2
     ): Objet? {
         val propre = etiquette.trim()
         if (propre.isEmpty() || !estDansLePlan(x, y)) return null
@@ -77,10 +78,19 @@ class Graph {
                 o1 in _objets && o2 in _objets &&      // objets du graphe
                 _connexions.none { it.relie(o1, o2) }  // pas de doublon (A–B ou B–A)
 
-    /** @return la connexion créée, ou null si refusée. */
-    fun addConnexion(o1: Objet, o2: Objet): Connexion? {
-        if (!peutConnecter(o1, o2)) return null
-        val connexion = Connexion(o1, o2)
+    /**
+     * V2 : [etiquette] obligatoire (trimée ; vide ou espaces = refus).
+     * @return la connexion créée, ou null si refusée.
+     */
+    fun addConnexion(
+        o1: Objet,
+        o2: Objet,
+        etiquette: String,
+        couleur: CouleurObjet = Connexion.COULEUR_PAR_DEFAUT // V2
+    ): Connexion? {
+        val propre = etiquette.trim() // V2
+        if (propre.isEmpty() || !peutConnecter(o1, o2)) return null
+        val connexion = Connexion(o1, o2, propre, couleur = couleur)
         _connexions.add(connexion)
         return connexion
     }

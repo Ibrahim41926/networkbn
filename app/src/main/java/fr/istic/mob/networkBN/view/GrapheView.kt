@@ -64,7 +64,7 @@ class GrapheView @JvmOverloads constructor(
             invalidate()
         }
 
-    /** Objet en cours de déplacement, ou null. */
+    /** V2 : objet en cours de déplacement, ou null (pour dessiner l'anneau de sélection). */
     var objetDeplace: Objet? = null
         set(value) {
             field = value
@@ -111,16 +111,25 @@ class GrapheView @JvmOverloads constructor(
         color = Color.WHITE
     }
 
-    /** Anneau ambre semi-transparent autour de l'objet sélectionné (il garde sa couleur). */
+    /**
+     * V2 : anneau ambre semi-transparent autour de l'objet sélectionné (il garde sa couleur).
+     * L'orange étant devenu une couleur d'objet, il ne sert plus à marquer la sélection.
+     */
     private val pinceauSelection = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dp(6f)
+        strokeWidth = dp(6f) // V2 : épaisseur de l'anneau de sélection
         color = Color.argb(170, 255, 193, 7)
     }
 
     private val pinceauBulle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(230, 255, 255, 255)
+    }
+
+    /** V2 : contour de la bulle d'étiquette d'une connexion (couleur de la connexion). */
+    private val pinceauBordBulle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(1.5f)
     }
 
     private val pinceauTexte = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -151,7 +160,7 @@ class GrapheView @JvmOverloads constructor(
         // 1. Connexions (sous les objets) : courbe de Bézier quadratique A -> C -> B.
         //    Flèche nulle : C = M, la courbe est une ligne droite.
         for (connexion in g.connexions) {
-            pinceauConnexion.color = connexion.couleur
+            pinceauConnexion.color = connexion.couleur.argb // V2 : couleur choisie à la création
             pinceauConnexion.strokeWidth = connexion.epaisseur
             val a = connexion.extremite1.position
             val b = connexion.extremite2.position
@@ -160,6 +169,15 @@ class GrapheView @JvmOverloads constructor(
             chemin.moveTo(a.x, a.y)
             chemin.quadTo(cx, cy, b.x, b.y)
             canvas.drawPath(chemin, pinceauConnexion)
+        }
+
+        // V2 : étiquettes des connexions, au milieu du trait (au-dessus des traits, sous les objets).
+        for (connexion in g.connexions) {
+            val a = connexion.extremite1.position
+            val b = connexion.extremite2.position
+            pinceauBordBulle.color = connexion.couleur.argb
+            val hauteurBulle = hauteurBulle()
+            dessinerBulle(canvas, connexion.etiquette, (a.x + b.x) / 2, (a.y + b.y) / 2 - hauteurBulle / 2, pinceauBordBulle)
         }
 
         // 2. Étiquettes des connexions, près du point P.
@@ -175,7 +193,7 @@ class GrapheView @JvmOverloads constructor(
             canvas.drawLine(depart.x, depart.y, it.xDoigt, it.yDoigt, pinceauProvisoire)
         }
 
-        // 4. Objets, dans l'ordre de la liste (dernier = premier plan).
+        // 3. Objets, dans l'ordre de la liste (dernier = premier plan).
         // Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
         val selectionne = objetDeplace ?: connexionProvisoire?.source
         for (objet in g.objets) dessinerObjet(canvas, objet, objet == selectionne)
@@ -186,27 +204,40 @@ class GrapheView @JvmOverloads constructor(
         val y = objet.position.y
 
         if (selectionne) {
-            // Anneau à l'extérieur du contour blanc.
+            // V2 : anneau à l'extérieur du contour blanc (un trait est centré sur son cercle).
             val rayonAnneau = rayonObjet + pinceauContour.strokeWidth / 2 + pinceauSelection.strokeWidth / 2
             canvas.drawCircle(x, y, rayonAnneau, pinceauSelection)
         }
-        pinceauObjet.color = objet.couleur.argb
+        pinceauObjet.color = objet.couleur.argb // V2 : couleur choisie à la création
         canvas.drawCircle(x, y, rayonObjet, pinceauObjet)
         canvas.drawCircle(x, y, rayonObjet, pinceauContour)
 
         // Étiquette dans une bulle, sous le cercle.
+        dessinerBulle(canvas, objet.etiquette, x, y + rayonObjet + margeEtiquette)
+    }
+
+    /** V2 : hauteur d'une bulle d'étiquette (texte + marge). */
+    private fun hauteurBulle(): Float {
         val metriques = pinceauTexte.fontMetrics
-        val largeurTexte = pinceauTexte.measureText(objet.etiquette)
-        val hauteurTexte = metriques.descent - metriques.ascent
-        val haut = y + rayonObjet + margeEtiquette
+        return metriques.descent - metriques.ascent + margeEtiquette
+    }
+
+    /**
+     * Étiquette dans une bulle blanche centrée horizontalement sur [x], de bord supérieur [haut].
+     * V2 : partagée par les objets et les connexions ; [bord] = contour optionnel de la bulle.
+     */
+    private fun dessinerBulle(canvas: Canvas, texte: String, x: Float, haut: Float, bord: Paint? = null) {
+        val metriques = pinceauTexte.fontMetrics
+        val largeurTexte = pinceauTexte.measureText(texte)
         rectBulle.set(
             x - largeurTexte / 2 - margeEtiquette,
             haut,
             x + largeurTexte / 2 + margeEtiquette,
-            haut + hauteurTexte + margeEtiquette
+            haut + hauteurBulle()
         )
         canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, pinceauBulle)
-        canvas.drawText(objet.etiquette, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
+        bord?.let { canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, it) }
+        canvas.drawText(texte, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
     }
 
     /**

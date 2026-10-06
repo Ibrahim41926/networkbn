@@ -23,6 +23,7 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- V2 : libellé « Couleur » au-dessus des pastilles. -->
     <TextView
         android:id="@+id/libelle_couleur"
         android:layout_width="wrap_content"
@@ -31,7 +32,7 @@
         android:text="@string/libelle_couleur"
         android:textAppearance="?attr/textAppearanceLabelLarge" />
 
-    <!-- Pastilles de couleur, ajoutées par MainActivity (une par CouleurObjet). -->
+    <!-- V2 : pastilles de couleur, ajoutées par MainActivity (une par CouleurObjet). -->
     <LinearLayout
         android:id="@+id/pastilles_couleur"
         android:layout_width="match_parent"

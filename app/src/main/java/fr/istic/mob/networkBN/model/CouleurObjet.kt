@@ -1,7 +1,7 @@
 package fr.istic.mob.networkBN.model
 
 /**
- * Couleurs proposées à la création d'un objet.
+ * V2 : couleurs proposées à la création d'un objet ou d'une connexion.
  *
  *  - [id]   : identifiant stable ("red", "green"...), indépendant de la langue.
  *  - [argb] : valeur ARGB utilisée pour le dessin (pas de dépendance Android).

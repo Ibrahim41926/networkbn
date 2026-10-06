@@ -14,6 +14,7 @@
     <string name="indice_etiquette">Label</string>
     <string name="erreur_etiquette_vide">The label cannot be empty</string>
 
+    <!-- V2 : choix de la couleur d'un objet. -->
     <string name="libelle_couleur">Color</string>
     <string name="couleur_rouge">Red</string>
     <string name="couleur_vert">Green</string>
@@ -22,6 +23,9 @@
     <string name="couleur_cyan">Cyan</string>
     <string name="couleur_magenta">Magenta</string>
     <string name="couleur_noir">Black</string>
+
+    <!-- V2 : étiquette obligatoire à la création d'une connexion. -->
+    <string name="titre_ajout_connexion">New connection</string>
 
     <string name="titre_reinitialiser">Reset the network?</string>
     <string name="message_reinitialiser">All objects and connections will be deleted.</string>
