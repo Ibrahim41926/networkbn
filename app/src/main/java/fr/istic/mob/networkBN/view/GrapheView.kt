@@ -174,7 +174,7 @@ class GrapheView @JvmOverloads constructor(
         // 2. Étiquettes des connexions, près du point P (bord = couleur de la connexion).
         //    Après tous les traits, avant les objets.
         for (connexion in g.connexions) {
-            val texte = connexion.etiquette ?: continue
+            val texte = connexion.etiquette
             val (ex, ey) = positionEtiquette(connexion)
             pinceauBordBulle.color = connexion.couleur.argb
             dessinerBulleCentree(canvas, texte, ex, ey, pinceauBordBulle)

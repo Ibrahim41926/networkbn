@@ -111,7 +111,7 @@ class Graph {
         _objets.clear()
     }
 
-        /**
+    /**
      * Change la courbure d'une connexion (0 = droite).
      * @return false si la connexion n'appartient pas au graphe.
      */

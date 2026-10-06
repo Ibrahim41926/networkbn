@@ -4,7 +4,8 @@ import kotlin.math.hypot
 /**
  * Connexion NON orientée entre deux objets.
  *
- * - Immuable.
+ * - Extrémités, étiquette et couleur fixées à la création ; seule la [fleche] change
+ *   (via [Graph.modifierFleche]).
  * - Extrémités = RÉFÉRENCES vers des [Objet] : si un objet bouge,
  *   la connexion suit sans rien recalculer.
  * - V2 : [etiquette] obligatoire, saisie par l'utilisateur (non vide, trimée, non traduite).
@@ -25,7 +26,7 @@ class Connexion internal constructor(
         require(extremite1 != extremite2) { "Boucle interdite" }
     }
 
-        /**
+    /**
      * Distance signée entre le milieu M de AB et le point P de la courbe.
      * 0 = connexion droite. Le signe indique de quel côté de AB la courbe passe.
      * Modifiée uniquement par [Graph.modifierFleche].
