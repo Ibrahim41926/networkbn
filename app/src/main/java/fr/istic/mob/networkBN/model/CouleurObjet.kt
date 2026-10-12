@@ -21,6 +21,9 @@ enum class CouleurObjet(val id: String, val argb: Int) {
         val PAR_DEFAUT = VERT
 
         /** Couleur d'identifiant [id], ou la couleur par défaut si inconnu. */
-        fun depuisId(id: String?): CouleurObjet = entries.firstOrNull { it.id == id } ?: PAR_DEFAUT
+        fun depuisId(id: String?): CouleurObjet = trouver(id) ?: PAR_DEFAUT
+
+        /** V2 : couleur d'identifiant [id], ou null si inconnu (sauvegarde invalide). */
+        fun trouver(id: String?): CouleurObjet? = entries.firstOrNull { it.id == id }
     }
 }

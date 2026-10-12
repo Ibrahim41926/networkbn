@@ -1,13 +1,23 @@
 package fr.istic.mob.networkBN.viewModel
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import fr.istic.mob.networkBN.data.FormatReseau
+import fr.istic.mob.networkBN.data.SauvegardeInvalideException
+import fr.istic.mob.networkBN.data.StockageReseaux
 import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
 import fr.istic.mob.networkBN.model.Plan
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 import kotlin.math.abs
 
 /**
@@ -21,15 +31,24 @@ import kotlin.math.abs
  * C'est le ViewModel qui décide ce qu'ils signifient, SELON LE MODE.
  *
  * Aucune référence à une Activity, une View ou un Canvas.
+ * V2 : AndroidViewModel uniquement pour connaître le dossier interne des sauvegardes ;
+ * les accès aux fichiers sont délégués à [StockageReseaux].
  */
-class GraphViewModel : ViewModel() {
+class GraphViewModel(application: Application) : AndroidViewModel(application) {
 
     // =====================================================================
     // 1. ÉTAT (privé : seul le ViewModel le modifie)
     // =====================================================================
 
-    /** Le réseau. */
-    private val graphe = Graph()
+    /** Le réseau. V2 : remplacé en entier par Ouvrir. */
+    private var graphe = Graph()
+
+    /** V2 : sauvegardes dans le stockage interne privé de l'application. */
+    private val stockage = StockageReseaux(File(application.filesDir, "reseaux"))
+
+    /** V2 : nom de la dernière sauvegarde enregistrée ou ouverte (proposé par Enregistrer), ou null. */
+    var nomReseau: String? = null
+        private set
 
     /**
      * Geste en cours en mode MODIFICATION : l'objet tenu par le doigt (ou aucun).
@@ -103,9 +122,28 @@ class GraphViewModel : ViewModel() {
     private val _defilement = MutableLiveData(Defilement.ORIGINE)
     val defilement: LiveData<Defilement> = _defilement
 
+    /**
+     * V2 : vrai pendant une lecture ou une écriture de fichier (indicateur de traitement).
+     * Les actions incompatibles (gestes, Nouveau réseau, Ouvrir, Enregistrer...) sont alors bloquées.
+     */
+    private val _operationEnCours = MutableLiveData(false)
+    val operationEnCours: LiveData<Boolean> = _operationEnCours
+
+    /** V2 : noms des sauvegardes à proposer (boîte « Ouvrir » affichée), ou null. */
+    private val _sauvegardes = MutableLiveData<List<String>?>(null)
+    val sauvegardes: LiveData<List<String>?> = _sauvegardes
+
+    /** V2 : message à afficher une fois (résultat d'Enregistrer / Ouvrir), ou null. */
+    private val _message = MutableLiveData<MessageReseau?>(null)
+    val message: LiveData<MessageReseau?> = _message
+
     /** V2 : vrai tant que la boîte est ouverte ; aucun geste ne doit alors modifier le graphe. */
     private val saisieConnexionEnCours: Boolean
         get() = _connexionEnAttente.value != null
+
+    /** V2 : boîte « Nouvelle connexion » ouverte ou opération de fichier en cours. */
+    private val gestesBloques: Boolean
+        get() = saisieConnexionEnCours || _operationEnCours.value == true
 
     /** Raccourci pour lire le mode actuel. */
     private val modeCourant: ModeEdition
@@ -166,19 +204,111 @@ class GraphViewModel : ViewModel() {
      * Le défilement revient en (0, 0).
      */
     fun nouveauReseau(nouveauPlan: Plan, largeur: Int, hauteur: Int) {
+        if (_operationEnCours.value == true) return
+        val vide = Graph()
+        vide.definirDimensionsPlan(largeur, hauteur)
+        remplacerReseau(nouveauPlan, vide, nom = null)
+    }
+
+    /**
+     * V2 : remplace tout le réseau (Nouveau réseau, Ouvrir) : geste et connexion en attente annulés,
+     * défilement en (0, 0), réseau non « modifié ».
+     */
+    private fun remplacerReseau(nouveauPlan: Plan, nouveauGraphe: Graph, nom: String?) {
         annulerConnexionEnAttente()
         annulerGeste()
-        graphe.resetAll()
-        graphe.definirDimensionsPlan(largeur, hauteur)
+        graphe = nouveauGraphe
+        nomReseau = nom
         _plan.value = nouveauPlan
         _modifie.value = false
         definirDefilement(0f, 0f)
         publierGraphe()
     }
 
-    /** V2 : à appeler après Enregistrer ou Ouvrir (étape suivante) : le réseau n'est plus « modifié ». */
-    fun marquerEnregistre() {
-        _modifie.value = false
+    // ---------- V2 : Enregistrer / Ouvrir ----------
+
+    /** Vrai si [nom] (trimé) peut servir de nom de sauvegarde : lettres, chiffres, espaces, - et _. */
+    fun nomSauvegardeValide(nom: String): Boolean = StockageReseaux.nomValide(nom.trim())
+
+    /** Vrai si une sauvegarde porte déjà ce nom (simple test d'existence, instantané). */
+    fun sauvegardeExiste(nom: String): Boolean = stockage.existe(nom.trim())
+
+    /**
+     * Enregistre le réseau sous [nom] (remplace une sauvegarde existante : la Vue a déjà confirmé).
+     * Le JSON est produit tout de suite (instantané du graphe), l'écriture se fait hors du thread principal.
+     */
+    fun enregistrer(nom: String) {
+        if (_operationEnCours.value == true) return
+        val propre = nom.trim()
+        if (!StockageReseaux.nomValide(propre)) return
+        val contenu = FormatReseau.versJson(_plan.value ?: Plan.PAR_DEFAUT, graphe)
+        _operationEnCours.value = true
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { stockage.ecrire(propre, contenu) }
+                nomReseau = propre
+                _modifie.value = false
+                _message.value = MessageReseau(MessageReseau.Type.ENREGISTRE, propre)
+            } catch (e: IOException) {
+                _message.value = MessageReseau(MessageReseau.Type.ERREUR_ENREGISTREMENT, propre)
+            } finally {
+                _operationEnCours.value = false
+            }
+        }
+    }
+
+    /** Lit la liste des sauvegardes ; la Vue ouvre la boîte « Ouvrir » quand [sauvegardes] est publiée. */
+    fun demanderListeSauvegardes() {
+        if (_operationEnCours.value == true) return
+        _operationEnCours.value = true
+        viewModelScope.launch {
+            try {
+                val noms = withContext(Dispatchers.IO) { stockage.lister() }
+                if (noms.isEmpty()) {
+                    _message.value = MessageReseau(MessageReseau.Type.AUCUNE_SAUVEGARDE)
+                } else {
+                    _sauvegardes.value = noms
+                }
+            } finally {
+                _operationEnCours.value = false
+            }
+        }
+    }
+
+    /** Boîte « Ouvrir » fermée sans choix (Annuler, retour, clic hors de la boîte). */
+    fun fermerListeSauvegardes() {
+        _sauvegardes.value = null
+    }
+
+    /**
+     * Ouvre la sauvegarde [nom]. Lecture et validation hors du thread principal ; le réseau courant
+     * n'est remplacé que si TOUT le fichier est valide. Sinon : message, et rien ne change.
+     * [dimensions] = taille de l'image de chaque plan (connue de la Vue), pour valider les positions.
+     */
+    fun ouvrir(nom: String, dimensions: Map<Plan, Pair<Int, Int>>) {
+        if (_operationEnCours.value == true) return
+        _sauvegardes.value = null
+        _operationEnCours.value = true
+        viewModelScope.launch {
+            try {
+                val (planLu, grapheLu) = withContext(Dispatchers.IO) {
+                    FormatReseau.depuisJson(stockage.lire(nom), dimensions)
+                }
+                remplacerReseau(planLu, grapheLu, nom)
+                _message.value = MessageReseau(MessageReseau.Type.OUVERT, nom)
+            } catch (e: IOException) {
+                _message.value = MessageReseau(MessageReseau.Type.ERREUR_LECTURE, nom)
+            } catch (e: SauvegardeInvalideException) {
+                _message.value = MessageReseau(MessageReseau.Type.FICHIER_INVALIDE, nom)
+            } finally {
+                _operationEnCours.value = false
+            }
+        }
+    }
+
+    /** La Vue a affiché [message] : il ne sera pas réaffiché (après une rotation par exemple). */
+    fun messageAffiche() {
+        _message.value = null
     }
 
     // ---------- Modes ----------
@@ -200,7 +330,7 @@ class GraphViewModel : ViewModel() {
      * Le ViewModel DÉCIDE, mais c'est la Vue qui AFFICHE la boîte de dialogue.
      */
     fun peutAjouterObjet(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?): Boolean =
-        !saisieConnexionEnCours &&                      // V2 : pas pendant la saisie d'une connexion
+        !gestesBloques &&                               // V2 : ni saisie de connexion ni opération de fichier
             modeCourant == ModeEdition.AJOUT_OBJET &&   // bon mode ?
             objetTouche == null &&                      // pas sur un objet existant
             connexionTouchee == null &&                 // V2 : ni sur une étiquette de connexion
@@ -226,7 +356,7 @@ class GraphViewModel : ViewModel() {
      * [connexionTouchee] = connexion dont l'étiquette est sous le doigt (seulement si aucun objet).
      */
     fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) {
-        if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
+        if (gestesBloques) return // V2 : bloqués pendant la saisie ou une opération de fichier
         annulerGeste()                     // on repart d'un état propre
 
         when (modeCourant) {
@@ -269,7 +399,7 @@ class GraphViewModel : ViewModel() {
 
     /** Le doigt bouge en (x, y). */
     fun glissement(x: Float, y: Float) {
-        if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
+        if (gestesBloques) return // V2 : bloqués pendant la saisie ou une opération de fichier
         when (modeCourant) {
             ModeEdition.MODIFICATION -> {
                 // V2 : courbure d'une connexion (seule la partie perpendiculaire à AB compte)
@@ -311,7 +441,7 @@ class GraphViewModel : ViewModel() {
      * et l'aperçu reste affiché entre les deux objets. Sinon, le geste se termine.
      */
     fun finGlissement(objetSousLeDoigt: Objet?) {
-        if (saisieConnexionEnCours) return // V2 : gestes bloqués pendant la saisie
+        if (gestesBloques) return // V2 : bloqués pendant la saisie ou une opération de fichier
         val provisoire = _connexionProvisoire.value
         if (modeCourant == ModeEdition.AJOUT_CONNEXION &&
             provisoire != null &&
@@ -381,11 +511,11 @@ class GraphViewModel : ViewModel() {
 
     /** Appui long sur un objet : vrai si la Vue doit ouvrir son menu. */
     fun peutModifierObjet(objet: Objet): Boolean =
-        !saisieConnexionEnCours && modeCourant == ModeEdition.MODIFICATION && objet in graphe.objets
+        !gestesBloques && modeCourant == ModeEdition.MODIFICATION && objet in graphe.objets
 
     /** Appui long sur l'étiquette d'une connexion : vrai si la Vue doit ouvrir son menu. */
     fun peutModifierConnexion(connexion: Connexion): Boolean =
-        !saisieConnexionEnCours && modeCourant == ModeEdition.MODIFICATION && connexion in graphe.connexions
+        !gestesBloques && modeCourant == ModeEdition.MODIFICATION && connexion in graphe.connexions
 
     /**
      * L'utilisateur a validé le menu de l'objet [id].
@@ -430,6 +560,7 @@ class GraphViewModel : ViewModel() {
 
     /** Après confirmation : supprime objets et connexions, garde le plan. */
     fun reinitialiser() {
+        if (_operationEnCours.value == true) return // V2
         annulerConnexionEnAttente() // V2 : abandonne une connexion en attente d'étiquette
         annulerGeste()              // annule le dernier geste
         graphe.resetAll()           // vide le graphe

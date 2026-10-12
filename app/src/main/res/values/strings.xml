@@ -45,6 +45,23 @@
     <string name="titre_reseau_non_enregistre">Unsaved network</string>
     <string name="message_reseau_non_enregistre">The current network has not been saved. Replace it?</string>
 
+    <!-- V2 : Enregistrer / Ouvrir. -->
+    <string name="action_enregistrer">Save network</string>
+    <string name="action_ouvrir">Open network</string>
+    <string name="titre_enregistrer">Save the network</string>
+    <string name="indice_nom_sauvegarde">Save name</string>
+    <string name="erreur_nom_vide">The name cannot be empty</string>
+    <string name="erreur_nom_invalide">Use only letters, digits, spaces, - and _</string>
+    <string name="titre_remplacer_sauvegarde">Replace the save?</string>
+    <string name="message_remplacer_sauvegarde">A save named “%1$s” already exists. Replace it?</string>
+    <string name="titre_ouvrir">Open a network</string>
+    <string name="message_reseau_enregistre">Network saved as “%1$s”</string>
+    <string name="message_reseau_ouvert">“%1$s” opened</string>
+    <string name="message_aucune_sauvegarde">No saved network yet</string>
+    <string name="message_erreur_enregistrement">Could not save “%1$s”</string>
+    <string name="message_erreur_lecture">Could not read “%1$s”. The current network is unchanged.</string>
+    <string name="message_fichier_invalide">“%1$s” is not a valid network file. The current network is unchanged.</string>
+
     <string name="titre_reinitialiser">Reset the network?</string>
     <string name="message_reinitialiser">All objects and connections will be deleted.</string>
 

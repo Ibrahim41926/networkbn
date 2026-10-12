@@ -72,6 +72,21 @@ class Graph {
         return objet
     }
 
+    /**
+     * V2 : recrée un objet lu dans une sauvegarde, avec son identifiant d'origine.
+     * Mêmes règles que [addObjet], plus : identifiant strictement positif et pas encore utilisé.
+     * Les prochains identifiants seront tous plus grands (jamais de réutilisation).
+     * @return l'objet recréé, ou null si refusé.
+     */
+    fun restaurerObjet(id: Long, etiquette: String, x: Float, y: Float, couleur: CouleurObjet): Objet? {
+        val propre = etiquette.trim()
+        if (id <= 0 || trouverObjet(id) != null || propre.isEmpty() || !estDansLePlan(x, y)) return null
+        val objet = Objet(id, propre, Coordonnee(x, y), couleur)
+        _objets.add(objet)
+        prochainId = maxOf(prochainId, id + 1)
+        return objet
+    }
+
     /** Vérifie les règles d'une connexion sans rien modifier. */
     fun peutConnecter(o1: Objet, o2: Objet): Boolean =
         o1 != o2 &&                                // pas de boucle
@@ -113,10 +128,10 @@ class Graph {
 
     /**
      * Change la courbure d'une connexion (0 = droite).
-     * @return false si la connexion n'appartient pas au graphe.
+     * @return false si la flèche n'est pas un nombre fini ou si la connexion n'appartient pas au graphe.
      */
     fun modifierFleche(connexion: Connexion, fleche: Float): Boolean {
-        if (connexion !in _connexions) return false
+        if (!fleche.isFinite() || connexion !in _connexions) return false
         connexion.fleche = fleche
         return true
     }
@@ -168,9 +183,9 @@ class Graph {
         return true
     }
 
-    /** @return false si l'épaisseur n'est pas strictement positive ou la connexion hors du graphe. */
+    /** @return false si l'épaisseur n'est pas un nombre fini strictement positif ou la connexion hors du graphe. */
     fun modifierEpaisseur(connexion: Connexion, epaisseur: Float): Boolean {
-        if (epaisseur <= 0f || connexion !in _connexions) return false
+        if (!epaisseur.isFinite() || epaisseur <= 0f || connexion !in _connexions) return false
         connexion.epaisseur = epaisseur
         return true
     }

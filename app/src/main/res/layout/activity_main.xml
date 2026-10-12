@@ -11,6 +11,14 @@
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceContainer" />
 
+    <!-- V2 : indicateur de traitement pendant Enregistrer / Ouvrir. -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/indicateur_traitement"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
     <!-- V2 : le plan est affiché à l'échelle 1:1. La vue gère elle-même le défilement
          (mode Navigation) : aucune ScrollView ne doit ajouter un second décalage. -->
     <fr.istic.mob.networkBN.view.GrapheView

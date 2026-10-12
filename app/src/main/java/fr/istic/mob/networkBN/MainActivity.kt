@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.RadioGroup
 import androidx.activity.enableEdgeToEdge
@@ -14,6 +15,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import fr.istic.mob.networkBN.model.Connexion
@@ -25,6 +28,7 @@ import fr.istic.mob.networkBN.view.SelecteurCouleur
 import fr.istic.mob.networkBN.view.dimensionsPlan
 import fr.istic.mob.networkBN.view.nom
 import fr.istic.mob.networkBN.viewModel.GraphViewModel
+import fr.istic.mob.networkBN.viewModel.MessageReseau
 import fr.istic.mob.networkBN.viewModel.ModeEdition
  
 /**
@@ -75,6 +79,19 @@ class MainActivity : AppCompatActivity() {
     /** V2 : plan coché dans la boîte « Nouveau réseau » (null si fermée). */
     private var planChoisi: Plan? = null
 
+    /** V2 : Enregistrer : boîte du nom, puis confirmation si le nom existe déjà. */
+    private var dialogueNomSauvegarde: AlertDialog? = null
+    private var champNomSauvegarde: TextInputEditText? = null
+    private var dialogueRemplacerSauvegarde: AlertDialog? = null
+    /** V2 : nom à remplacer (confirmation ouverte), ou null. */
+    private var nomARemplacer: String? = null
+
+    /** V2 : Ouvrir : confirmation (réseau non enregistré), puis liste des sauvegardes. */
+    private var dialogueConfirmationOuvrir: AlertDialog? = null
+    private var dialogueListeSauvegardes: AlertDialog? = null
+
+    private lateinit var indicateurTraitement: LinearProgressIndicator
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -99,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         vueGraphe = findViewById(R.id.vue_graphe)
+        indicateurTraitement = findViewById(R.id.indicateur_traitement) // V2
         // V2 : les limites du graphe suivent la taille du plan courant (conservé par le ViewModel).
         val (largeur, hauteur) = dimensionsPlan(resources, viewModel.plan.value ?: Plan.PAR_DEFAUT)
         viewModel.definirPlan(largeur, hauteur)
@@ -133,6 +151,36 @@ class MainActivity : AppCompatActivity() {
 
             invalidateOptionsMenu()
         }
+        // V2 : pendant une opération de fichier : indicateur visible, actions du menu désactivées.
+        viewModel.operationEnCours.observe(this) { enCours ->
+            indicateurTraitement.visibility = if (enCours) View.VISIBLE else View.GONE
+            invalidateOptionsMenu()
+        }
+        // V2 : la boîte « Ouvrir » suit l'état du ViewModel (donc survit à la rotation).
+        viewModel.sauvegardes.observe(this) { noms ->
+            if (noms != null) {
+                if (dialogueListeSauvegardes == null) ouvrirListeSauvegardes(noms)
+            } else {
+                dialogueListeSauvegardes?.dismiss()
+                dialogueListeSauvegardes = null
+            }
+        }
+        // V2 : résultat d'Enregistrer / Ouvrir, affiché une seule fois.
+        viewModel.message.observe(this) { message ->
+            if (message != null) {
+                Snackbar.make(vueGraphe, texteMessage(message), Snackbar.LENGTH_LONG).show()
+                viewModel.messageAffiche()
+            }
+        }
+    }
+
+    private fun texteMessage(message: MessageReseau): String = when (message.type) {
+        MessageReseau.Type.ENREGISTRE -> getString(R.string.message_reseau_enregistre, message.nom)
+        MessageReseau.Type.OUVERT -> getString(R.string.message_reseau_ouvert, message.nom)
+        MessageReseau.Type.AUCUNE_SAUVEGARDE -> getString(R.string.message_aucune_sauvegarde)
+        MessageReseau.Type.ERREUR_ENREGISTREMENT -> getString(R.string.message_erreur_enregistrement, message.nom)
+        MessageReseau.Type.ERREUR_LECTURE -> getString(R.string.message_erreur_lecture, message.nom)
+        MessageReseau.Type.FICHIER_INVALIDE -> getString(R.string.message_fichier_invalide, message.nom)
     }
 
     private fun libelleMode(mode: ModeEdition): Int = when (mode) {
@@ -183,6 +231,11 @@ class MainActivity : AppCompatActivity() {
             ModeEdition.NAVIGATION -> R.id.mode_navigation // V2
         }
         menu.findItem(idCoche)?.isChecked = true
+        // V2 : actions incompatibles avec une opération de fichier en cours.
+        val libre = viewModel.operationEnCours.value != true
+        for (id in listOf(R.id.action_nouveau_reseau, R.id.action_ouvrir, R.id.action_enregistrer, R.id.action_reinitialiser)) {
+            menu.findItem(id)?.isEnabled = libre
+        }
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -193,6 +246,8 @@ class MainActivity : AppCompatActivity() {
             R.id.mode_modification -> viewModel.changerMode(ModeEdition.MODIFICATION)
             R.id.mode_navigation -> viewModel.changerMode(ModeEdition.NAVIGATION) // V2
             R.id.action_nouveau_reseau -> demanderNouveauReseau() // V2
+            R.id.action_ouvrir -> demanderOuverture()           // V2
+            R.id.action_enregistrer -> ouvrirSaisieNomSauvegarde(viewModel.nomReseau.orEmpty()) // V2
             R.id.action_reinitialiser -> ouvrirConfirmationReinitialiser()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -517,6 +572,114 @@ class MainActivity : AppCompatActivity() {
         planChoisi = null
     }
 
+    // ---------------- V2 : Enregistrer ----------------
+
+    /** Boîte « Enregistrer le réseau » : nom de la sauvegarde ([texteInitial] = dernier nom utilisé). */
+    private fun ouvrirSaisieNomSauvegarde(texteInitial: String) {
+        val contenu = layoutInflater.inflate(R.layout.dialogue_nom_sauvegarde, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_nom_sauvegarde)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_nom_sauvegarde)
+        champ.setText(texteInitial)
+        champ.setSelection(champ.text?.length ?: 0)
+        champNomSauvegarde = champ
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_enregistrer)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si le nom est refusé.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerSaisieNomSauvegarde() }
+            .setOnCancelListener { fermerSaisieNomSauvegarde() }
+            .create()
+
+        val valider = {
+            val nom = champ.text?.toString().orEmpty().trim()
+            when {
+                nom.isEmpty() -> cadre.error = getString(R.string.erreur_nom_vide)
+                !viewModel.nomSauvegardeValide(nom) -> cadre.error = getString(R.string.erreur_nom_invalide)
+                else -> {
+                    dialogue.dismiss()
+                    fermerSaisieNomSauvegarde()
+                    // Un nom existant nécessite une confirmation avant remplacement.
+                    if (viewModel.sauvegardeExiste(nom)) ouvrirConfirmationRemplacer(nom) else viewModel.enregistrer(nom)
+                }
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialogue.show()
+        champ.requestFocus()
+        dialogueNomSauvegarde = dialogue
+    }
+
+    private fun fermerSaisieNomSauvegarde() {
+        dialogueNomSauvegarde = null
+        champNomSauvegarde = null
+    }
+
+    private fun ouvrirConfirmationRemplacer(nom: String) {
+        nomARemplacer = nom
+        dialogueRemplacerSauvegarde = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_remplacer_sauvegarde)
+            .setMessage(getString(R.string.message_remplacer_sauvegarde, nom))
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                fermerConfirmationRemplacer()
+                viewModel.enregistrer(nom)
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerConfirmationRemplacer() }
+            .setOnCancelListener { fermerConfirmationRemplacer() }
+            .show()
+    }
+
+    private fun fermerConfirmationRemplacer() {
+        dialogueRemplacerSauvegarde = null
+        nomARemplacer = null
+    }
+
+    // ---------------- V2 : Ouvrir ----------------
+
+    /** Réseau modifié non enregistré : confirmation d'abord ; sinon, directement la liste. */
+    private fun demanderOuverture() {
+        if (viewModel.modifie.value == true) ouvrirConfirmationOuvrir() else viewModel.demanderListeSauvegardes()
+    }
+
+    private fun ouvrirConfirmationOuvrir() {
+        dialogueConfirmationOuvrir = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_reseau_non_enregistre)
+            .setMessage(R.string.message_reseau_non_enregistre)
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                dialogueConfirmationOuvrir = null
+                viewModel.demanderListeSauvegardes()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> dialogueConfirmationOuvrir = null }
+            .setOnCancelListener { dialogueConfirmationOuvrir = null }
+            .show()
+    }
+
+    /** Boîte « Ouvrir un réseau » : un clic sur un nom charge cette sauvegarde. */
+    private fun ouvrirListeSauvegardes(noms: List<String>) {
+        // Taille de chaque plan, pour que le ViewModel valide les positions lues.
+        val dimensions = Plan.entries.associateWith { dimensionsPlan(resources, it) }
+        dialogueListeSauvegardes = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_ouvrir)
+            .setItems(noms.toTypedArray()) { _, indice -> viewModel.ouvrir(noms[indice], dimensions) }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> viewModel.fermerListeSauvegardes() }
+            .setOnCancelListener { viewModel.fermerListeSauvegardes() }
+            .show()
+    }
+
     // ---------------- Confirmation de réinitialisation ----------------
 
     private fun ouvrirConfirmationReinitialiser() {
@@ -563,6 +726,10 @@ class MainActivity : AppCompatActivity() {
         // V2 : Nouveau réseau : confirmation ouverte, ou plan coché dans la boîte de choix.
         outState.putBoolean(CLE_CONFIRMATION_NOUVEAU, dialogueConfirmationNouveau != null)
         planChoisi?.let { outState.putString(CLE_CHOIX_PLAN, it.id) }
+        // V2 : Enregistrer / Ouvrir (la liste des sauvegardes est gardée par le ViewModel).
+        champNomSauvegarde?.let { outState.putString(CLE_NOM_SAUVEGARDE, it.text?.toString().orEmpty()) }
+        nomARemplacer?.let { outState.putString(CLE_REMPLACER_SAUVEGARDE, it) }
+        outState.putBoolean(CLE_CONFIRMATION_OUVRIR, dialogueConfirmationOuvrir != null)
     }
 
     private fun restaurerDialogues(etat: Bundle?) {
@@ -599,6 +766,10 @@ class MainActivity : AppCompatActivity() {
         // V2 : Nouveau réseau.
         if (etat.getBoolean(CLE_CONFIRMATION_NOUVEAU)) ouvrirConfirmationNouveau()
         etat.getString(CLE_CHOIX_PLAN)?.let { id -> ouvrirChoixPlan(Plan.depuisId(id) ?: Plan.PAR_DEFAUT) }
+        // V2 : Enregistrer / Ouvrir.
+        etat.getString(CLE_NOM_SAUVEGARDE)?.let { ouvrirSaisieNomSauvegarde(it) }
+        etat.getString(CLE_REMPLACER_SAUVEGARDE)?.let { ouvrirConfirmationRemplacer(it) }
+        if (etat.getBoolean(CLE_CONFIRMATION_OUVRIR)) ouvrirConfirmationOuvrir()
     }
 
     override fun onDestroy() {
@@ -610,6 +781,10 @@ class MainActivity : AppCompatActivity() {
         dialogueModifConnexion?.dismiss() // V2
         dialogueConfirmationNouveau?.dismiss() // V2
         dialogueChoixPlan?.dismiss()           // V2
+        dialogueNomSauvegarde?.dismiss()       // V2
+        dialogueRemplacerSauvegarde?.dismiss() // V2
+        dialogueConfirmationOuvrir?.dismiss()  // V2
+        dialogueListeSauvegardes?.dismiss()    // V2 : dismiss (pas cancel) : la liste reste dans le ViewModel
         super.onDestroy()
     }
 
@@ -630,5 +805,8 @@ class MainActivity : AppCompatActivity() {
         const val CLE_MENU_CONNEXION_EPAISSEUR = "menu_connexion_epaisseur" // V2
         const val CLE_CONFIRMATION_NOUVEAU = "confirmation_nouveau_reseau" // V2
         const val CLE_CHOIX_PLAN = "choix_plan" // V2
+        const val CLE_NOM_SAUVEGARDE = "nom_sauvegarde" // V2
+        const val CLE_REMPLACER_SAUVEGARDE = "remplacer_sauvegarde" // V2
+        const val CLE_CONFIRMATION_OUVRIR = "confirmation_ouvrir" // V2
     }
 }

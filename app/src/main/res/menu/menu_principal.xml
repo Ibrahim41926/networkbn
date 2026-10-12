@@ -25,6 +25,15 @@
         android:id="@+id/action_nouveau_reseau"
         android:title="@string/action_nouveau_reseau" />
 
+    <!-- V2 : sauvegardes dans le stockage interne privé. -->
+    <item
+        android:id="@+id/action_ouvrir"
+        android:title="@string/action_ouvrir" />
+
+    <item
+        android:id="@+id/action_enregistrer"
+        android:title="@string/action_enregistrer" />
+
     <item
         android:id="@+id/action_reinitialiser"
         android:title="@string/action_reinitialiser" />
