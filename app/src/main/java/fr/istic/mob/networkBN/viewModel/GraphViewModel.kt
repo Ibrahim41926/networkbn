@@ -52,6 +52,14 @@ class GraphViewModel : ViewModel() {
     private var dernierX = 0f
     private var dernierY = 0f
 
+    /** V2 : taille de la vue en pixels (0 tant qu'elle n'est pas connue), pour borner le défilement. */
+    private var largeurVue = 0
+    private var hauteurVue = 0
+
+    /** V2 : mode NAVIGATION : dernière position du doigt en coordonnées ÉCRAN. */
+    private var dernierXEcran = 0f
+    private var dernierYEcran = 0f
+
     // =====================================================================
     // 2. VITRINE (ce que la Vue observe pour se dessiner)
     // =====================================================================
@@ -91,6 +99,10 @@ class GraphViewModel : ViewModel() {
     private val _modifie = MutableLiveData(false)
     val modifie: LiveData<Boolean> = _modifie
 
+    /** V2 : défilement de l'affichage (toujours borné), conservé à la rotation. */
+    private val _defilement = MutableLiveData(Defilement.ORIGINE)
+    val defilement: LiveData<Defilement> = _defilement
+
     /** V2 : vrai tant que la boîte est ouverte ; aucun geste ne doit alors modifier le graphe. */
     private val saisieConnexionEnCours: Boolean
         get() = _connexionEnAttente.value != null
@@ -113,19 +125,45 @@ class GraphViewModel : ViewModel() {
         publierGraphe()
     }
 
+    /**
+     * V2 : publie le défilement [x], [y] ramené dans les bornes, sur chaque axe :
+     * 0 ≤ décalage ≤ max(0, taillePlan − tailleVue). Plan plus petit que la vue : 0, sans centrage.
+     */
+    private fun definirDefilement(x: Float, y: Float) {
+        val maxX = (graphe.largeurPlan - largeurVue).coerceAtLeast(0).toFloat()
+        val maxY = (graphe.hauteurPlan - hauteurVue).coerceAtLeast(0).toFloat()
+        val borne = Defilement(x.coerceIn(0f, maxX), y.coerceIn(0f, maxY))
+        if (borne != _defilement.value) _defilement.value = borne
+    }
+
+    /** V2 : défilement actuel re-borné (après un changement de taille de la vue ou de plan). */
+    private fun rebornerDefilement() {
+        val actuel = _defilement.value ?: Defilement.ORIGINE
+        definirDefilement(actuel.x, actuel.y)
+    }
+
     // =====================================================================
     // 3. GUICHET (appelé par la Vue)
     // =====================================================================
 
-    /** Appelé une fois, quand la Vue a chargé l'image du plan. */
+    /** Appelé à la création de l'écran, avec la taille du plan courant. */
     fun definirPlan(largeur: Int, hauteur: Int) {
         graphe.definirDimensionsPlan(largeur, hauteur)
+        rebornerDefilement() // V2
         publierGraphe()
+    }
+
+    /** V2 : la vue a changé de taille (premier affichage, rotation) : le défilement est re-borné. */
+    fun definirTailleVue(largeur: Int, hauteur: Int) {
+        largeurVue = largeur
+        hauteurVue = hauteur
+        rebornerDefilement()
     }
 
     /**
      * V2 : Nouveau réseau : graphe vide sur [nouveauPlan], de taille [largeur] x [hauteur] pixels.
      * Annule le geste et la connexion en attente ; le réseau n'est plus « modifié ».
+     * Le défilement revient en (0, 0).
      */
     fun nouveauReseau(nouveauPlan: Plan, largeur: Int, hauteur: Int) {
         annulerConnexionEnAttente()
@@ -134,6 +172,7 @@ class GraphViewModel : ViewModel() {
         graphe.definirDimensionsPlan(largeur, hauteur)
         _plan.value = nouveauPlan
         _modifie.value = false
+        definirDefilement(0f, 0f)
         publierGraphe()
     }
 
@@ -210,7 +249,22 @@ class GraphViewModel : ViewModel() {
                 }
             }
             ModeEdition.AJOUT_OBJET -> Unit // géré par peutAjouterObjet (appui long)
+            ModeEdition.NAVIGATION -> {
+                // V2 : n'importe où (fond, objet, étiquette) ; position du doigt à l'écran.
+                val (xEcran, yEcran) = versEcran(x, y)
+                dernierXEcran = xEcran
+                dernierYEcran = yEcran
+            }
         }
+    }
+
+    /**
+     * V2 : point du plan (x, y) en coordonnées ÉCRAN : xVue = xPlan − défilement.
+     * La vue a converti le toucher avec ce même défilement, donc on retrouve la position réelle du doigt.
+     */
+    private fun versEcran(x: Float, y: Float): Pair<Float, Float> {
+        val d = _defilement.value ?: Defilement.ORIGINE
+        return x - d.x to y - d.y
     }
 
     /** Le doigt bouge en (x, y). */
@@ -238,6 +292,15 @@ class GraphViewModel : ViewModel() {
                 _connexionProvisoire.value = provisoire.copy(xDoigt = x, yDoigt = y)
             }
             ModeEdition.AJOUT_OBJET -> Unit // en mode ajout d'objet, le glissement ne produit rien
+            ModeEdition.NAVIGATION -> {
+                // V2 : le plan suit le doigt. On utilise la différence entre deux positions ÉCRAN
+                // successives (en coordonnées du plan, le doigt « bougerait » avec le défilement).
+                val (xEcran, yEcran) = versEcran(x, y)
+                val d = _defilement.value ?: Defilement.ORIGINE
+                definirDefilement(d.x - (xEcran - dernierXEcran), d.y - (yEcran - dernierYEcran))
+                dernierXEcran = xEcran
+                dernierYEcran = yEcran
+            }
         }
     }
 

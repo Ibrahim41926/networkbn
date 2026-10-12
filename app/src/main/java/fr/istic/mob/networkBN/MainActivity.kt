@@ -5,9 +5,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.HorizontalScrollView
 import android.widget.RadioGroup
-import android.widget.ScrollView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -105,6 +103,8 @@ class MainActivity : AppCompatActivity() {
         val (largeur, hauteur) = dimensionsPlan(resources, viewModel.plan.value ?: Plan.PAR_DEFAUT)
         viewModel.definirPlan(largeur, hauteur)
         vueGraphe.ecouteur = ecouteurGestes
+        // V2 : la taille de la vue borne le défilement.
+        vueGraphe.ecouteurTaille = { largeurVue, hauteurVue -> viewModel.definirTailleVue(largeurVue, hauteurVue) }
 
         observerViewModel()
         restaurerDialogues(savedInstanceState)
@@ -116,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         // Le ViewModel republie la même instance : l'observateur est appelé à chaque fois.
         viewModel.grapheObservable.observe(this) { vueGraphe.graphe = it }
         viewModel.plan.observe(this) { vueGraphe.plan = it } // V2 : plan affiché
+        viewModel.defilement.observe(this) { vueGraphe.defilement = it } // V2
         viewModel.connexionProvisoire.observe(this) { vueGraphe.connexionProvisoire = it }
         viewModel.objetDeplace.observe(this) { vueGraphe.objetDeplace = it } // V2 : anneau de sélection
         // V2 : la boîte « Nouvelle connexion » suit l'état du ViewModel (donc survit à la rotation).
@@ -138,6 +139,7 @@ class MainActivity : AppCompatActivity() {
         ModeEdition.AJOUT_OBJET -> R.string.mode_ajout_objet
         ModeEdition.AJOUT_CONNEXION -> R.string.mode_ajout_connexion
         ModeEdition.MODIFICATION -> R.string.mode_modification
+        ModeEdition.NAVIGATION -> R.string.mode_navigation // V2
     }
 
     // ---------------- Gestes (vue -> ViewModel) ----------------
@@ -178,6 +180,7 @@ class MainActivity : AppCompatActivity() {
             ModeEdition.AJOUT_OBJET -> R.id.mode_ajout_objet
             ModeEdition.AJOUT_CONNEXION -> R.id.mode_ajout_connexion
             ModeEdition.MODIFICATION -> R.id.mode_modification
+            ModeEdition.NAVIGATION -> R.id.mode_navigation // V2
         }
         menu.findItem(idCoche)?.isChecked = true
         return super.onPrepareOptionsMenu(menu)
@@ -188,6 +191,7 @@ class MainActivity : AppCompatActivity() {
             R.id.mode_ajout_objet -> viewModel.changerMode(ModeEdition.AJOUT_OBJET)
             R.id.mode_ajout_connexion -> viewModel.changerMode(ModeEdition.AJOUT_CONNEXION)
             R.id.mode_modification -> viewModel.changerMode(ModeEdition.MODIFICATION)
+            R.id.mode_navigation -> viewModel.changerMode(ModeEdition.NAVIGATION) // V2
             R.id.action_nouveau_reseau -> demanderNouveauReseau() // V2
             R.id.action_reinitialiser -> ouvrirConfirmationReinitialiser()
             else -> return super.onOptionsItemSelected(item)
@@ -501,10 +505,7 @@ class MainActivity : AppCompatActivity() {
                 val plan = planChoisi ?: planInitial
                 fermerChoixPlan()
                 val (largeur, hauteur) = dimensionsPlan(resources, plan)
-                viewModel.nouveauReseau(plan, largeur, hauteur)
-                // Défilement remis en (0, 0). L'étape 6b le déplacera dans la vue.
-                findViewById<ScrollView>(R.id.defilement_vertical).scrollTo(0, 0)
-                findViewById<HorizontalScrollView>(R.id.defilement_horizontal).scrollTo(0, 0)
+                viewModel.nouveauReseau(plan, largeur, hauteur) // remet aussi le défilement en (0, 0)
             }
             .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerChoixPlan() }
             .setOnCancelListener { fermerChoixPlan() }

@@ -19,13 +19,16 @@ import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
 import fr.istic.mob.networkBN.model.Plan
 import fr.istic.mob.networkBN.viewModel.ConnexionProvisoire
+import fr.istic.mob.networkBN.viewModel.Defilement
 import kotlin.math.hypot
 
 /**
  * Dessine le plan, les connexions et les objets, et capte les gestes.
  *
- *  - Le plan est dessiné en (0, 0) SANS mise à l'échelle :
- *    1 pixel image = 1 pixel canevas, donc coordonnées du doigt = coordonnées du plan.
+ *  - Le plan est dessiné SANS mise à l'échelle : 1 pixel image = 1 pixel canevas.
+ *  - V2 : la vue gère elle-même le défilement ([defilement], fourni par le ViewModel) :
+ *    dessin xVue = xPlan − défilement, toucher xPlan = xVue + défilement.
+ *    L'écouteur ne reçoit QUE des coordonnées du plan.
  *  - La vue ne décide RIEN : elle transmet des gestes neutres à [ecouteur]
  *    (« glissement commencé ici, sur tel objet »). Le ViewModel les interprète selon le mode.
  */
@@ -46,6 +49,9 @@ class GrapheView @JvmOverloads constructor(
 
     var ecouteur: EcouteurGestes? = null
 
+    /** V2 : appelé quand la taille de la vue change (premier affichage, rotation), pour borner le défilement. */
+    var ecouteurTaille: ((largeur: Int, hauteur: Int) -> Unit)? = null
+
     // ---------------- Données à dessiner ----------------
 
     /** V2 : plan affiché, choisi par le ViewModel. */
@@ -54,7 +60,13 @@ class GrapheView @JvmOverloads constructor(
             if (field == value) return
             field = value
             image = chargerImagePlan(resources, value)
-            requestLayout() // la vue prend la taille du nouveau plan
+            invalidate()
+        }
+
+    /** V2 : point du plan affiché dans le coin haut-gauche de la vue, borné par le ViewModel. */
+    var defilement: Defilement = Defilement.ORIGINE
+        set(value) {
+            field = value
             invalidate()
         }
 
@@ -155,14 +167,24 @@ class GrapheView @JvmOverloads constructor(
 
     // ---------------- Taille ----------------
 
-    /** La vue a exactement la taille du plan ; les ScrollView parentes gèrent le défilement. */
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(image.width, image.height)
+    /** V2 : la vue occupe la zone sous la barre d'outils (match_parent) ; le ViewModel re-borne le défilement. */
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        ecouteurTaille?.invoke(w, h)
     }
 
     // ---------------- Dessin ----------------
 
+    /** V2 : toute la scène est décalée ensemble du défilement : xVue = xPlan − défilement. */
     override fun onDraw(canvas: Canvas) {
+        canvas.save()
+        canvas.translate(-defilement.x, -defilement.y)
+        dessinerScene(canvas)
+        canvas.restore()
+    }
+
+    /** Plan, connexions, étiquettes, connexion provisoire et objets, en coordonnées du plan. */
+    private fun dessinerScene(canvas: Canvas) {
         canvas.drawBitmap(image, 0f, 0f, null)
         val g = graphe ?: return
 
@@ -265,11 +287,15 @@ class GrapheView @JvmOverloads constructor(
 
     // ---------------- Gestes ----------------
 
-    /** Objet sous le point (x, y), le plus au premier plan d'abord ; null si fond. */
+    /** V2 : point touché (coordonnées de la vue) converti en coordonnées du plan : xPlan = xVue + défilement. */
+    private fun versPlanX(xVue: Float) = xVue + defilement.x
+    private fun versPlanY(yVue: Float) = yVue + defilement.y
+
+    /** Objet sous le point (x, y) du PLAN, le plus au premier plan d'abord ; null si fond. */
     fun objetSous(x: Float, y: Float): Objet? =
         graphe?.objets?.lastOrNull { hypot(it.position.x - x, it.position.y - y) <= rayonTouche }
 
-    /** Connexion dont l'étiquette (ou le point P) est sous (x, y), la plus au premier plan d'abord. */
+    /** Connexion dont l'étiquette est sous le point (x, y) du PLAN, la plus au premier plan d'abord. */
     fun connexionSous(x: Float, y: Float): Connexion? =
         graphe?.connexions?.lastOrNull {
             val (ex, ey) = positionEtiquette(it)
@@ -282,7 +308,7 @@ class GrapheView @JvmOverloads constructor(
      */
     private val seuilGlissement = ViewConfiguration.get(context).scaledTouchSlop
 
-    /** V2 : point de départ du geste, pour savoir si le doigt a dépassé le seuil. */
+    /** V2 : point de départ du geste (coordonnées de la vue), pour savoir si le doigt a dépassé le seuil. */
     private var xDepart = 0f
     private var yDepart = 0f
     private var glissementCommence = false
@@ -296,10 +322,12 @@ class GrapheView @JvmOverloads constructor(
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onLongPress(e: MotionEvent) {
+                val x = versPlanX(e.x) // V2 : coordonnées du plan
+                val y = versPlanY(e.y)
                 // Même priorité qu'au toucher : les objets, puis les étiquettes de connexion.
-                val objet = objetSous(e.x, e.y)
-                val connexion = if (objet == null) connexionSous(e.x, e.y) else null
-                if (ecouteur?.appuiLong(e.x, e.y, objet, connexion) == true) {
+                val objet = objetSous(x, y)
+                val connexion = if (objet == null) connexionSous(x, y) else null
+                if (ecouteur?.appuiLong(x, y, objet, connexion) == true) {
                     appuiLongTraite = true
                     ecouteur?.gesteAnnule()
                 }
@@ -309,27 +337,26 @@ class GrapheView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         detecteurAppuiLong.onTouchEvent(event)
-        val x = event.x
-        val y = event.y
+        // V2 : TOUJOURS convertir avant usage : l'écouteur ne reçoit que des coordonnées du plan.
+        val x = versPlanX(event.x)
+        val y = versPlanY(event.y)
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                xDepart = x
-                yDepart = y
+                xDepart = event.x
+                yDepart = event.y
                 glissementCommence = false
                 appuiLongTraite = false
                 // Priorité : les objets, puis les étiquettes de connexion.
                 val objet = objetSous(x, y)
                 val connexion = if (objet == null) connexionSous(x, y) else null
-                // Doigt posé sur une cible : les ScrollView parentes ne doivent pas défiler.
-                if (objet != null || connexion != null) parent?.requestDisallowInterceptTouchEvent(true)
                 ecouteur?.debutGlissement(x, y, objet, connexion)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (appuiLongTraite) return true
-                // V2 : tant que le doigt reste sous le seuil, ce n'est pas un glissement
-                // (l'appui long reste possible).
-                if (!glissementCommence && hypot(x - xDepart, y - yDepart) < seuilGlissement) return true
+                // V2 : tant que le doigt reste sous le seuil (mesuré à l'écran), ce n'est pas
+                // un glissement (l'appui long reste possible).
+                if (!glissementCommence && hypot(event.x - xDepart, event.y - yDepart) < seuilGlissement) return true
                 glissementCommence = true
                 ecouteur?.glissement(x, y)
             }
@@ -337,7 +364,7 @@ class GrapheView @JvmOverloads constructor(
                 if (!appuiLongTraite) ecouteur?.finGlissement(objetSous(x, y))
                 performClick()
             }
-            // Par exemple : une ScrollView parente a repris le geste pour défiler.
+            // Geste interrompu par le système.
             MotionEvent.ACTION_CANCEL -> ecouteur?.gesteAnnule()
         }
         return true

@@ -8,6 +8,7 @@
     <string name="mode_ajout_objet">Add objects</string>
     <string name="mode_ajout_connexion">Add connections</string>
     <string name="mode_modification">Move objects</string>
+    <string name="mode_navigation">Navigation</string>
     <string name="action_reinitialiser">Reset network</string>
 
     <string name="titre_ajout_objet">New object</string>

@@ -4,6 +4,7 @@
     <string name="mode_ajout_objet">Ajouter des objets</string>
     <string name="mode_ajout_connexion">Ajouter des connexions</string>
     <string name="mode_modification">Déplacer les objets</string>
+    <string name="mode_navigation">Navigation</string>
     <string name="action_reinitialiser">Réinitialiser le réseau</string>
 
     <string name="titre_ajout_objet">Nouvel objet</string>
