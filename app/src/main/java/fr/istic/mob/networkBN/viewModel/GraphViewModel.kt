@@ -7,6 +7,7 @@ import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
+import fr.istic.mob.networkBN.model.Plan
 import kotlin.math.abs
 
 /**
@@ -79,6 +80,17 @@ class GraphViewModel : ViewModel() {
     private val _connexionEnAttente = MutableLiveData<ConnexionEnAttente?>(null)
     val connexionEnAttente: LiveData<ConnexionEnAttente?> = _connexionEnAttente
 
+    /** V2 : plan courant (identifiant stable), conservé à la rotation. */
+    private val _plan = MutableLiveData(Plan.PAR_DEFAUT)
+    val plan: LiveData<Plan> = _plan
+
+    /**
+     * V2 : vrai si le réseau a changé depuis le dernier Nouveau réseau / Enregistrer / Ouvrir.
+     * Sert à demander confirmation avant de remplacer le réseau.
+     */
+    private val _modifie = MutableLiveData(false)
+    val modifie: LiveData<Boolean> = _modifie
+
     /** V2 : vrai tant que la boîte est ouverte ; aucun geste ne doit alors modifier le graphe. */
     private val saisieConnexionEnCours: Boolean
         get() = _connexionEnAttente.value != null
@@ -95,6 +107,12 @@ class GraphViewModel : ViewModel() {
         _grapheObservable.value = graphe
     }
 
+    /** V2 : le modèle a changé : on le note (une seule notification) puis on publie. */
+    private fun publierModification() {
+        if (_modifie.value != true) _modifie.value = true
+        publierGraphe()
+    }
+
     // =====================================================================
     // 3. GUICHET (appelé par la Vue)
     // =====================================================================
@@ -103,6 +121,25 @@ class GraphViewModel : ViewModel() {
     fun definirPlan(largeur: Int, hauteur: Int) {
         graphe.definirDimensionsPlan(largeur, hauteur)
         publierGraphe()
+    }
+
+    /**
+     * V2 : Nouveau réseau : graphe vide sur [nouveauPlan], de taille [largeur] x [hauteur] pixels.
+     * Annule le geste et la connexion en attente ; le réseau n'est plus « modifié ».
+     */
+    fun nouveauReseau(nouveauPlan: Plan, largeur: Int, hauteur: Int) {
+        annulerConnexionEnAttente()
+        annulerGeste()
+        graphe.resetAll()
+        graphe.definirDimensionsPlan(largeur, hauteur)
+        _plan.value = nouveauPlan
+        _modifie.value = false
+        publierGraphe()
+    }
+
+    /** V2 : à appeler après Enregistrer ou Ouvrir (étape suivante) : le réseau n'est plus « modifié ». */
+    fun marquerEnregistre() {
+        _modifie.value = false
     }
 
     // ---------- Modes ----------
@@ -138,7 +175,7 @@ class GraphViewModel : ViewModel() {
     fun validerEtiquette(texte: String, x: Float, y: Float, couleur: CouleurObjet): Boolean {
         if (modeCourant != ModeEdition.AJOUT_OBJET) return false   // 1. mode
         graphe.addObjet(texte, x, y, couleur) ?: return false       // 2. modèle (règles)
-        publierGraphe()                                              // 3. publier
+        publierModification()                                        // 3. publier
         return true
     }
 
@@ -188,12 +225,12 @@ class GraphViewModel : ViewModel() {
                     val nouvelleFleche = connexion.fleche + (x - dernierX) * nx + (y - dernierY) * ny
                     dernierX = x
                     dernierY = y
-                    if (graphe.modifierFleche(connexion, nouvelleFleche)) publierGraphe()
+                    if (graphe.modifierFleche(connexion, nouvelleFleche)) publierModification()
                     return
                 }
                 // Déplacement d'un objet : nouveau centre = doigt + décalage (le modèle borne au plan)
                 val objet = objetSelectionne ?: return
-                if (graphe.modifiePosition(objet, x + decalageX, y + decalageY)) publierGraphe()
+                if (graphe.modifiePosition(objet, x + decalageX, y + decalageY)) publierModification()
             }
             ModeEdition.AJOUT_CONNEXION -> {
                 // On recrée la connexion provisoire avec la nouvelle position du doigt
@@ -227,7 +264,7 @@ class GraphViewModel : ViewModel() {
 
         // V2 : une connexion presque droite est redressée au relâchement.
         connexionCourbee?.let {
-            if (abs(it.fleche) < SEUIL_REDRESSEMENT && graphe.modifierFleche(it, 0f)) publierGraphe()
+            if (abs(it.fleche) < SEUIL_REDRESSEMENT && graphe.modifierFleche(it, 0f)) publierModification()
         }
 
         annulerGeste()
@@ -251,7 +288,7 @@ class GraphViewModel : ViewModel() {
         graphe.addConnexion(source, cible, texte, couleur) ?: return false // le modèle trime et refuse le vide
         _connexionEnAttente.value = null
         _connexionProvisoire.value = null
-        publierGraphe()
+        publierModification()
         return true
     }
 
@@ -295,7 +332,7 @@ class GraphViewModel : ViewModel() {
         val objet = graphe.trouverObjet(id) ?: return true // objet disparu : rien à modifier
         if (!graphe.modifierEtiquette(objet, etiquette)) return false
         graphe.modifierCouleur(objet, couleur)
-        publierGraphe()
+        publierModification()
         return true
     }
 
@@ -303,7 +340,7 @@ class GraphViewModel : ViewModel() {
     fun supprimerObjet(id: Long) {
         val objet = graphe.trouverObjet(id) ?: return
         annulerGeste()
-        if (graphe.supprimerObjet(objet)) publierGraphe()
+        if (graphe.supprimerObjet(objet)) publierModification()
     }
 
     /**
@@ -315,7 +352,7 @@ class GraphViewModel : ViewModel() {
         if (!graphe.modifierEtiquette(connexion, etiquette)) return false
         graphe.modifierCouleur(connexion, couleur)
         graphe.modifierEpaisseur(connexion, epaisseur)
-        publierGraphe()
+        publierModification()
         return true
     }
 
@@ -323,7 +360,7 @@ class GraphViewModel : ViewModel() {
     fun supprimerConnexion(id1: Long, id2: Long) {
         val connexion = graphe.trouverConnexion(id1, id2) ?: return
         annulerGeste()
-        if (graphe.supprimerConnexion(connexion)) publierGraphe()
+        if (graphe.supprimerConnexion(connexion)) publierModification()
     }
 
     // ---------- Réinitialisation ----------
@@ -333,7 +370,7 @@ class GraphViewModel : ViewModel() {
         annulerConnexionEnAttente() // V2 : abandonne une connexion en attente d'étiquette
         annulerGeste()              // annule le dernier geste
         graphe.resetAll()           // vide le graphe
-        publierGraphe()             // prévient la Vue que le graphe a changé
+        publierModification()       // V2 : réseau modifié, la Vue est prévenue
     }
 
     private companion object {

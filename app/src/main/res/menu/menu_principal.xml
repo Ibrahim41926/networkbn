@@ -16,6 +16,11 @@
             android:title="@string/mode_modification" />
     </group>
 
+    <!-- V2 : graphe vide sur un plan choisi. -->
+    <item
+        android:id="@+id/action_nouveau_reseau"
+        android:title="@string/action_nouveau_reseau" />
+
     <item
         android:id="@+id/action_reinitialiser"
         android:title="@string/action_reinitialiser" />

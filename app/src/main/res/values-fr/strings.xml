@@ -32,6 +32,14 @@
     <string name="epaisseur_moyenne">Moyenne</string>
     <string name="epaisseur_epaisse">Épaisse</string>
 
+    <!-- V2 : Nouveau réseau et plans intégrés. -->
+    <string name="action_nouveau_reseau">Nouveau réseau</string>
+    <string name="titre_choisir_plan">Choisir un plan</string>
+    <string name="plan_appartement">Appartement</string>
+    <string name="plan_maison">Maison</string>
+    <string name="titre_reseau_non_enregistre">Réseau non enregistré</string>
+    <string name="message_reseau_non_enregistre">Le réseau actuel n\'a pas été enregistré. Le remplacer ?</string>
+
     <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
     <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>
 

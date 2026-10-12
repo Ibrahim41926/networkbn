@@ -5,7 +5,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.HorizontalScrollView
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -19,8 +21,11 @@ import com.google.android.material.textfield.TextInputLayout
 import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Objet
+import fr.istic.mob.networkBN.model.Plan
 import fr.istic.mob.networkBN.view.GrapheView
 import fr.istic.mob.networkBN.view.SelecteurCouleur
+import fr.istic.mob.networkBN.view.dimensionsPlan
+import fr.istic.mob.networkBN.view.nom
 import fr.istic.mob.networkBN.viewModel.GraphViewModel
 import fr.istic.mob.networkBN.viewModel.ModeEdition
  
@@ -66,6 +71,12 @@ class MainActivity : AppCompatActivity() {
     private var selecteurModifConnexion: SelecteurCouleur? = null
     private var groupeEpaisseur: RadioGroup? = null
 
+    /** V2 : Nouveau réseau : confirmation (réseau non enregistré), puis choix du plan. */
+    private var dialogueConfirmationNouveau: AlertDialog? = null
+    private var dialogueChoixPlan: AlertDialog? = null
+    /** V2 : plan coché dans la boîte « Nouveau réseau » (null si fermée). */
+    private var planChoisi: Plan? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -90,7 +101,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         vueGraphe = findViewById(R.id.vue_graphe)
-        viewModel.definirPlan(vueGraphe.largeurPlan, vueGraphe.hauteurPlan)
+        // V2 : les limites du graphe suivent la taille du plan courant (conservé par le ViewModel).
+        val (largeur, hauteur) = dimensionsPlan(resources, viewModel.plan.value ?: Plan.PAR_DEFAUT)
+        viewModel.definirPlan(largeur, hauteur)
         vueGraphe.ecouteur = ecouteurGestes
 
         observerViewModel()
@@ -102,6 +115,7 @@ class MainActivity : AppCompatActivity() {
     private fun observerViewModel() {
         // Le ViewModel republie la même instance : l'observateur est appelé à chaque fois.
         viewModel.grapheObservable.observe(this) { vueGraphe.graphe = it }
+        viewModel.plan.observe(this) { vueGraphe.plan = it } // V2 : plan affiché
         viewModel.connexionProvisoire.observe(this) { vueGraphe.connexionProvisoire = it }
         viewModel.objetDeplace.observe(this) { vueGraphe.objetDeplace = it } // V2 : anneau de sélection
         // V2 : la boîte « Nouvelle connexion » suit l'état du ViewModel (donc survit à la rotation).
@@ -174,6 +188,7 @@ class MainActivity : AppCompatActivity() {
             R.id.mode_ajout_objet -> viewModel.changerMode(ModeEdition.AJOUT_OBJET)
             R.id.mode_ajout_connexion -> viewModel.changerMode(ModeEdition.AJOUT_CONNEXION)
             R.id.mode_modification -> viewModel.changerMode(ModeEdition.MODIFICATION)
+            R.id.action_nouveau_reseau -> demanderNouveauReseau() // V2
             R.id.action_reinitialiser -> ouvrirConfirmationReinitialiser()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -453,6 +468,54 @@ class MainActivity : AppCompatActivity() {
         groupeEpaisseur = null
     }
 
+    // ---------------- V2 : Nouveau réseau ----------------
+
+    /** Réseau modifié non enregistré : confirmation d'abord ; sinon, directement le choix du plan. */
+    private fun demanderNouveauReseau() {
+        if (viewModel.modifie.value == true) ouvrirConfirmationNouveau() else ouvrirChoixPlan()
+    }
+
+    private fun ouvrirConfirmationNouveau() {
+        dialogueConfirmationNouveau = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_reseau_non_enregistre)
+            .setMessage(R.string.message_reseau_non_enregistre)
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                dialogueConfirmationNouveau = null
+                ouvrirChoixPlan()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> dialogueConfirmationNouveau = null }
+            .setOnCancelListener { dialogueConfirmationNouveau = null }
+            .show()
+    }
+
+    /** Boîte « Choisir un plan » : un bouton radio par plan, [planInitial] coché (plan courant par défaut). */
+    private fun ouvrirChoixPlan(planInitial: Plan = viewModel.plan.value ?: Plan.PAR_DEFAUT) {
+        planChoisi = planInitial
+        val plans = Plan.entries
+        val noms = plans.map { getString(it.nom) }.toTypedArray()
+
+        dialogueChoixPlan = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_choisir_plan)
+            .setSingleChoiceItems(noms, plans.indexOf(planInitial)) { _, indice -> planChoisi = plans[indice] }
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                val plan = planChoisi ?: planInitial
+                fermerChoixPlan()
+                val (largeur, hauteur) = dimensionsPlan(resources, plan)
+                viewModel.nouveauReseau(plan, largeur, hauteur)
+                // Défilement remis en (0, 0). L'étape 6b le déplacera dans la vue.
+                findViewById<ScrollView>(R.id.defilement_vertical).scrollTo(0, 0)
+                findViewById<HorizontalScrollView>(R.id.defilement_horizontal).scrollTo(0, 0)
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerChoixPlan() }
+            .setOnCancelListener { fermerChoixPlan() }
+            .show()
+    }
+
+    private fun fermerChoixPlan() {
+        dialogueChoixPlan = null
+        planChoisi = null
+    }
+
     // ---------------- Confirmation de réinitialisation ----------------
 
     private fun ouvrirConfirmationReinitialiser() {
@@ -496,6 +559,9 @@ class MainActivity : AppCompatActivity() {
             selecteurModifConnexion?.let { outState.putString(CLE_MENU_CONNEXION_COULEUR, it.couleur.id) }
             groupeEpaisseur?.let { outState.putFloat(CLE_MENU_CONNEXION_EPAISSEUR, epaisseurChoisie(it)) }
         }
+        // V2 : Nouveau réseau : confirmation ouverte, ou plan coché dans la boîte de choix.
+        outState.putBoolean(CLE_CONFIRMATION_NOUVEAU, dialogueConfirmationNouveau != null)
+        planChoisi?.let { outState.putString(CLE_CHOIX_PLAN, it.id) }
     }
 
     private fun restaurerDialogues(etat: Bundle?) {
@@ -529,6 +595,9 @@ class MainActivity : AppCompatActivity() {
                 if (etat.containsKey(CLE_MENU_CONNEXION_EPAISSEUR)) etat.getFloat(CLE_MENU_CONNEXION_EPAISSEUR) else null
             )
         }
+        // V2 : Nouveau réseau.
+        if (etat.getBoolean(CLE_CONFIRMATION_NOUVEAU)) ouvrirConfirmationNouveau()
+        etat.getString(CLE_CHOIX_PLAN)?.let { id -> ouvrirChoixPlan(Plan.depuisId(id) ?: Plan.PAR_DEFAUT) }
     }
 
     override fun onDestroy() {
@@ -538,6 +607,8 @@ class MainActivity : AppCompatActivity() {
         dialogueConnexion?.dismiss() // V2 : dismiss (pas cancel) : la connexion reste en attente
         dialogueModifObjet?.dismiss()     // V2
         dialogueModifConnexion?.dismiss() // V2
+        dialogueConfirmationNouveau?.dismiss() // V2
+        dialogueChoixPlan?.dismiss()           // V2
         super.onDestroy()
     }
 
@@ -556,5 +627,7 @@ class MainActivity : AppCompatActivity() {
         const val CLE_MENU_CONNEXION_TEXTE = "menu_connexion_texte" // V2
         const val CLE_MENU_CONNEXION_COULEUR = "menu_connexion_couleur" // V2
         const val CLE_MENU_CONNEXION_EPAISSEUR = "menu_connexion_epaisseur" // V2
+        const val CLE_CONFIRMATION_NOUVEAU = "confirmation_nouveau_reseau" // V2
+        const val CLE_CHOIX_PLAN = "choix_plan" // V2
     }
 }

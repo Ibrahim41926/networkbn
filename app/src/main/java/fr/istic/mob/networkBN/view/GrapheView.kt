@@ -2,7 +2,6 @@ package fr.istic.mob.networkBN.view
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -15,10 +14,10 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import fr.istic.mob.networkBN.R
 import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.Graph
 import fr.istic.mob.networkBN.model.Objet
+import fr.istic.mob.networkBN.model.Plan
 import fr.istic.mob.networkBN.viewModel.ConnexionProvisoire
 import kotlin.math.hypot
 
@@ -49,10 +48,18 @@ class GrapheView @JvmOverloads constructor(
 
     // ---------------- Données à dessiner ----------------
 
-    private val plan: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.plan)
+    /** V2 : plan affiché, choisi par le ViewModel. */
+    var plan: Plan = Plan.PAR_DEFAUT
+        set(value) {
+            if (field == value) return
+            field = value
+            image = chargerImagePlan(resources, value)
+            requestLayout() // la vue prend la taille du nouveau plan
+            invalidate()
+        }
 
-    val largeurPlan: Int get() = plan.width
-    val hauteurPlan: Int get() = plan.height
+    /** Image du plan courant, en taille réelle (1 pixel image = 1 pixel canevas). */
+    private var image: Bitmap = chargerImagePlan(resources, plan)
 
     var graphe: Graph? = null
         set(value) {
@@ -150,13 +157,13 @@ class GrapheView @JvmOverloads constructor(
 
     /** La vue a exactement la taille du plan ; les ScrollView parentes gèrent le défilement. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(plan.width, plan.height)
+        setMeasuredDimension(image.width, image.height)
     }
 
     // ---------------- Dessin ----------------
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawBitmap(plan, 0f, 0f, null)
+        canvas.drawBitmap(image, 0f, 0f, null)
         val g = graphe ?: return
 
         // 1. Connexions (sous les objets) : courbe de Bézier quadratique A -> C -> B.

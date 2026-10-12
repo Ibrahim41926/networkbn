@@ -36,6 +36,14 @@
     <string name="epaisseur_moyenne">Medium</string>
     <string name="epaisseur_epaisse">Thick</string>
 
+    <!-- V2 : Nouveau réseau et plans intégrés. -->
+    <string name="action_nouveau_reseau">New network</string>
+    <string name="titre_choisir_plan">Choose a floor plan</string>
+    <string name="plan_appartement">Apartment</string>
+    <string name="plan_maison">House</string>
+    <string name="titre_reseau_non_enregistre">Unsaved network</string>
+    <string name="message_reseau_non_enregistre">The current network has not been saved. Replace it?</string>
+
     <string name="titre_reinitialiser">Reset the network?</string>
     <string name="message_reinitialiser">All objects and connections will be deleted.</string>
 
