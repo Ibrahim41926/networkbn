@@ -12,10 +12,18 @@ package fr.istic.mob.networkBN.model
  */
 class Objet internal constructor(
     val id: Long,
-    val etiquette: String,
+    etiquette: String,
     position: Coordonnee,
-    val couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT
+    couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT
 ) {
+
+    /** V2 : modifiable depuis le menu de l'objet, uniquement via [Graph.modifierEtiquette]. */
+    var etiquette: String = etiquette
+        internal set
+
+    /** V2 : modifiable depuis le menu de l'objet, uniquement via [Graph.modifierCouleur]. */
+    var couleur: CouleurObjet = couleur
+        internal set
 
     /**
      * Lecture publique, écriture réservée au module (via [Graph.modifiePosition]).

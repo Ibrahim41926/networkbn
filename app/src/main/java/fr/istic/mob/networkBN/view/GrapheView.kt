@@ -14,6 +14,7 @@ import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import fr.istic.mob.networkBN.R
 import fr.istic.mob.networkBN.model.Connexion
 import fr.istic.mob.networkBN.model.Graph
@@ -36,7 +37,8 @@ class GrapheView @JvmOverloads constructor(
 
     /** Gestes transmis à l'Activity, qui les relaie au ViewModel. */
     interface EcouteurGestes {
-        fun appuiLong(x: Float, y: Float, objetTouche: Objet?)
+        /** @return true si l'appui long a ouvert une boîte : le geste en cours s'arrête alors. */
+        fun appuiLong(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?): Boolean
         fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?)
         fun glissement(x: Float, y: Float)
         fun finGlissement(objetSousLeDoigt: Objet?)
@@ -217,9 +219,8 @@ class GrapheView @JvmOverloads constructor(
 
     /**
      * Étiquette d'objet dans une bulle blanche centrée horizontalement sur [x], de bord supérieur [haut].
-     * [bord] = contour optionnel de la bulle.
      */
-    private fun dessinerBulle(canvas: Canvas, texte: String, x: Float, haut: Float, bord: Paint? = null) {
+    private fun dessinerBulle(canvas: Canvas, texte: String, x: Float, haut: Float) {
         val metriques = pinceauTexte.fontMetrics
         val largeurTexte = pinceauTexte.measureText(texte)
         rectBulle.set(
@@ -229,7 +230,6 @@ class GrapheView @JvmOverloads constructor(
             haut + hauteurBulle()
         )
         canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, pinceauBulle)
-        bord?.let { canvas.drawRoundRect(rectBulle, rayonBulle, rayonBulle, it) }
         canvas.drawText(texte, x, haut + margeEtiquette / 2 - metriques.ascent, pinceauTexte)
     }
 
@@ -269,13 +269,33 @@ class GrapheView @JvmOverloads constructor(
             hypot(ex - x, ey - y) <= rayonTouche
         }
 
+    /**
+     * V2 : distance en dessous de laquelle le doigt est considéré immobile.
+     * C'est aussi le seuil du GestureDetector : au-delà, l'appui long est annulé.
+     */
+    private val seuilGlissement = ViewConfiguration.get(context).scaledTouchSlop
+
+    /** V2 : point de départ du geste, pour savoir si le doigt a dépassé le seuil. */
+    private var xDepart = 0f
+    private var yDepart = 0f
+    private var glissementCommence = false
+
+    /** V2 : vrai si l'appui long a ouvert une boîte : la suite du geste est ignorée. */
+    private var appuiLongTraite = false
+
     private val detecteurAppuiLong = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onLongPress(e: MotionEvent) {
-                ecouteur?.appuiLong(e.x, e.y, objetSous(e.x, e.y))
+                // Même priorité qu'au toucher : les objets, puis les étiquettes de connexion.
+                val objet = objetSous(e.x, e.y)
+                val connexion = if (objet == null) connexionSous(e.x, e.y) else null
+                if (ecouteur?.appuiLong(e.x, e.y, objet, connexion) == true) {
+                    appuiLongTraite = true
+                    ecouteur?.gesteAnnule()
+                }
             }
         }
     )
@@ -287,6 +307,10 @@ class GrapheView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                xDepart = x
+                yDepart = y
+                glissementCommence = false
+                appuiLongTraite = false
                 // Priorité : les objets, puis les étiquettes de connexion.
                 val objet = objetSous(x, y)
                 val connexion = if (objet == null) connexionSous(x, y) else null
@@ -294,9 +318,16 @@ class GrapheView @JvmOverloads constructor(
                 if (objet != null || connexion != null) parent?.requestDisallowInterceptTouchEvent(true)
                 ecouteur?.debutGlissement(x, y, objet, connexion)
             }
-            MotionEvent.ACTION_MOVE -> ecouteur?.glissement(x, y)
+            MotionEvent.ACTION_MOVE -> {
+                if (appuiLongTraite) return true
+                // V2 : tant que le doigt reste sous le seuil, ce n'est pas un glissement
+                // (l'appui long reste possible).
+                if (!glissementCommence && hypot(x - xDepart, y - yDepart) < seuilGlissement) return true
+                glissementCommence = true
+                ecouteur?.glissement(x, y)
+            }
             MotionEvent.ACTION_UP -> {
-                ecouteur?.finGlissement(objetSous(x, y))
+                if (!appuiLongTraite) ecouteur?.finGlissement(objetSous(x, y))
                 performClick()
             }
             // Par exemple : une ScrollView parente a repris le geste pour défiler.

@@ -121,4 +121,58 @@ class Graph {
         return true
     }
 
+    // ---------------- V2 : menus (suppression et modification) ----------------
+
+    /** Connexion entre les objets d'identifiants [id1] et [id2], dans un sens ou dans l'autre. */
+    fun trouverConnexion(id1: Long, id2: Long): Connexion? {
+        val o1 = trouverObjet(id1) ?: return null
+        val o2 = trouverObjet(id2) ?: return null
+        return _connexions.firstOrNull { it.relie(o1, o2) }
+    }
+
+    /** Supprime l'objet ET toutes ses connexions : aucune connexion orpheline ne subsiste. */
+    fun supprimerObjet(objet: Objet): Boolean {
+        if (objet !in _objets) return false
+        _connexions.removeAll { it.concerne(objet) }
+        _objets.remove(objet)
+        return true
+    }
+
+    fun supprimerConnexion(connexion: Connexion): Boolean = _connexions.remove(connexion)
+
+    /** @return false (rien n'est modifié) si l'étiquette est vide ou l'objet hors du graphe. */
+    fun modifierEtiquette(objet: Objet, etiquette: String): Boolean {
+        val propre = etiquette.trim()
+        if (propre.isEmpty() || objet !in _objets) return false
+        objet.etiquette = propre
+        return true
+    }
+
+    fun modifierCouleur(objet: Objet, couleur: CouleurObjet): Boolean {
+        if (objet !in _objets) return false
+        objet.couleur = couleur
+        return true
+    }
+
+    /** @return false (rien n'est modifié) si l'étiquette est vide ou la connexion hors du graphe. */
+    fun modifierEtiquette(connexion: Connexion, etiquette: String): Boolean {
+        val propre = etiquette.trim()
+        if (propre.isEmpty() || connexion !in _connexions) return false
+        connexion.etiquette = propre
+        return true
+    }
+
+    fun modifierCouleur(connexion: Connexion, couleur: CouleurObjet): Boolean {
+        if (connexion !in _connexions) return false
+        connexion.couleur = couleur
+        return true
+    }
+
+    /** @return false si l'épaisseur n'est pas strictement positive ou la connexion hors du graphe. */
+    fun modifierEpaisseur(connexion: Connexion, epaisseur: Float): Boolean {
+        if (epaisseur <= 0f || connexion !in _connexions) return false
+        connexion.epaisseur = epaisseur
+        return true
+    }
+
 }

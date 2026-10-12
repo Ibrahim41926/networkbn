@@ -23,6 +23,15 @@
     <!-- V2 : étiquette obligatoire à la création d'une connexion. -->
     <string name="titre_ajout_connexion">Nouvelle connexion</string>
 
+    <!-- V2 : menus d'un objet et d'une connexion (appui long en mode modification). -->
+    <string name="titre_modifier_objet">Modifier l\'objet</string>
+    <string name="titre_modifier_connexion">Modifier la connexion</string>
+    <string name="bouton_supprimer">Supprimer</string>
+    <string name="libelle_epaisseur">Épaisseur</string>
+    <string name="epaisseur_fine">Fine</string>
+    <string name="epaisseur_moyenne">Moyenne</string>
+    <string name="epaisseur_epaisse">Épaisse</string>
+
     <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
     <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>
 

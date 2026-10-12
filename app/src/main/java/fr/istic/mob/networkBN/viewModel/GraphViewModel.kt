@@ -123,10 +123,11 @@ class GraphViewModel : ViewModel() {
      *
      * Le ViewModel DÉCIDE, mais c'est la Vue qui AFFICHE la boîte de dialogue.
      */
-    fun peutAjouterObjet(x: Float, y: Float, objetTouche: Objet?): Boolean =
+    fun peutAjouterObjet(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?): Boolean =
         !saisieConnexionEnCours &&                      // V2 : pas pendant la saisie d'une connexion
             modeCourant == ModeEdition.AJOUT_OBJET &&   // bon mode ?
             objetTouche == null &&                      // pas sur un objet existant
+            connexionTouchee == null &&                 // V2 : ni sur une étiquette de connexion
             graphe.estDansLePlan(x, y)                  // et sur l'image du plan
 
     /**
@@ -274,6 +275,55 @@ class GraphViewModel : ViewModel() {
         if (!saisieConnexionEnCours && _connexionProvisoire.value != null) {
             _connexionProvisoire.value = null
         }
+    }
+
+    // ---------- V2 : menus (appui long en mode MODIFICATION) ----------
+
+    /** Appui long sur un objet : vrai si la Vue doit ouvrir son menu. */
+    fun peutModifierObjet(objet: Objet): Boolean =
+        !saisieConnexionEnCours && modeCourant == ModeEdition.MODIFICATION && objet in graphe.objets
+
+    /** Appui long sur l'étiquette d'une connexion : vrai si la Vue doit ouvrir son menu. */
+    fun peutModifierConnexion(connexion: Connexion): Boolean =
+        !saisieConnexionEnCours && modeCourant == ModeEdition.MODIFICATION && connexion in graphe.connexions
+
+    /**
+     * L'utilisateur a validé le menu de l'objet [id].
+     * @return false si l'étiquette est refusée (vide...) : rien n'est modifié, la Vue garde la boîte ouverte.
+     */
+    fun modifierObjet(id: Long, etiquette: String, couleur: CouleurObjet): Boolean {
+        val objet = graphe.trouverObjet(id) ?: return true // objet disparu : rien à modifier
+        if (!graphe.modifierEtiquette(objet, etiquette)) return false
+        graphe.modifierCouleur(objet, couleur)
+        publierGraphe()
+        return true
+    }
+
+    /** Supprime l'objet [id] et toutes ses connexions. */
+    fun supprimerObjet(id: Long) {
+        val objet = graphe.trouverObjet(id) ?: return
+        annulerGeste()
+        if (graphe.supprimerObjet(objet)) publierGraphe()
+    }
+
+    /**
+     * L'utilisateur a validé le menu de la connexion entre [id1] et [id2].
+     * @return false si l'étiquette est refusée (vide...) : rien n'est modifié, la Vue garde la boîte ouverte.
+     */
+    fun modifierConnexion(id1: Long, id2: Long, etiquette: String, couleur: CouleurObjet, epaisseur: Float): Boolean {
+        val connexion = graphe.trouverConnexion(id1, id2) ?: return true // connexion disparue
+        if (!graphe.modifierEtiquette(connexion, etiquette)) return false
+        graphe.modifierCouleur(connexion, couleur)
+        graphe.modifierEpaisseur(connexion, epaisseur)
+        publierGraphe()
+        return true
+    }
+
+    /** Supprime la connexion entre [id1] et [id2]. */
+    fun supprimerConnexion(id1: Long, id2: Long) {
+        val connexion = graphe.trouverConnexion(id1, id2) ?: return
+        annulerGeste()
+        if (graphe.supprimerConnexion(connexion)) publierGraphe()
     }
 
     // ---------- Réinitialisation ----------

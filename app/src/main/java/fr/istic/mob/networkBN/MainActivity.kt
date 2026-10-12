@@ -5,6 +5,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.RadioGroup
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -51,6 +52,19 @@ class MainActivity : AppCompatActivity() {
     /** V2 : texte et couleur saisis avant une rotation, remis dans la boîte recréée. */
     private var texteConnexionRestaure: String = ""
     private var couleurConnexionRestauree: CouleurObjet = Connexion.COULEUR_PAR_DEFAUT
+
+    /** V2 : menu « Modifier l'objet » : identifiant de l'objet visé (null si fermé). */
+    private var idObjetModifie: Long? = null
+    private var dialogueModifObjet: AlertDialog? = null
+    private var champModifObjet: TextInputEditText? = null
+    private var selecteurModifObjet: SelecteurCouleur? = null
+
+    /** V2 : menu « Modifier la connexion » : identifiants de ses deux extrémités (null si fermé). */
+    private var idsConnexionModifiee: Pair<Long, Long>? = null
+    private var dialogueModifConnexion: AlertDialog? = null
+    private var champModifConnexion: TextInputEditText? = null
+    private var selecteurModifConnexion: SelecteurCouleur? = null
+    private var groupeEpaisseur: RadioGroup? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -115,8 +129,16 @@ class MainActivity : AppCompatActivity() {
     // ---------------- Gestes (vue -> ViewModel) ----------------
 
     private val ecouteurGestes = object : GrapheView.EcouteurGestes {
-        override fun appuiLong(x: Float, y: Float, objetTouche: Objet?) {
-            if (viewModel.peutAjouterObjet(x, y, objetTouche)) ouvrirSaisieEtiquette(x, y)
+        override fun appuiLong(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?): Boolean {
+            when {
+                viewModel.peutAjouterObjet(x, y, objetTouche, connexionTouchee) -> ouvrirSaisieEtiquette(x, y)
+                // V2 : menus en mode modification (objets prioritaires sur les connexions).
+                objetTouche != null && viewModel.peutModifierObjet(objetTouche) -> ouvrirMenuObjet(objetTouche.id)
+                connexionTouchee != null && viewModel.peutModifierConnexion(connexionTouchee) ->
+                    ouvrirMenuConnexion(connexionTouchee.extremite1.id, connexionTouchee.extremite2.id)
+                else -> return false
+            }
+            return true
         }
 
         override fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) =
@@ -279,6 +301,158 @@ class MainActivity : AppCompatActivity() {
         selecteurConnexion = null // V2 : couleur non mémorisée pour la prochaine ouverture
     }
 
+    // ---------------- V2 : menu d'un objet (appui long en mode modification) ----------------
+
+    /**
+     * Boîte « Modifier l'objet » : étiquette + couleur, boutons Supprimer / Annuler / OK.
+     * [texteInitial] et [couleurInitiale] : valeurs saisies avant une rotation (sinon celles de l'objet).
+     */
+    private fun ouvrirMenuObjet(id: Long, texteInitial: String? = null, couleurInitiale: CouleurObjet? = null) {
+        val objet = viewModel.grapheObservable.value?.trouverObjet(id) ?: return
+        idObjetModifie = id
+
+        val contenu = layoutInflater.inflate(R.layout.dialogue_etiquette, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_etiquette)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette)
+        champ.setText(texteInitial ?: objet.etiquette)
+        champModifObjet = champ
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur), couleurInitiale ?: objet.couleur)
+        selecteurModifObjet = selecteur
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_modifier_objet)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNeutralButton(R.string.bouton_supprimer) { _, _ ->
+                viewModel.supprimerObjet(id)
+                fermerMenuObjet()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerMenuObjet() }
+            .setOnCancelListener { fermerMenuObjet() }
+            .create()
+
+        val valider = {
+            if (viewModel.modifierObjet(id, champ.text?.toString().orEmpty(), selecteur.couleur)) {
+                dialogue.dismiss()
+                fermerMenuObjet()
+            } else {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.show()
+        dialogueModifObjet = dialogue
+    }
+
+    private fun fermerMenuObjet() {
+        idObjetModifie = null
+        dialogueModifObjet = null
+        champModifObjet = null
+        selecteurModifObjet = null
+    }
+
+    // ---------------- V2 : menu d'une connexion (appui long sur son étiquette) ----------------
+
+    /** Boutons d'épaisseur du layout, dans le même ordre que [Connexion.EPAISSEURS]. */
+    private val boutonsEpaisseur = listOf(R.id.epaisseur_fine, R.id.epaisseur_moyenne, R.id.epaisseur_epaisse)
+
+    /**
+     * Boîte « Modifier la connexion » : étiquette + couleur + épaisseur, boutons Supprimer / Annuler / OK.
+     * La connexion est désignée par les identifiants de ses extrémités [id1] et [id2].
+     */
+    private fun ouvrirMenuConnexion(
+        id1: Long,
+        id2: Long,
+        texteInitial: String? = null,
+        couleurInitiale: CouleurObjet? = null,
+        epaisseurInitiale: Float? = null
+    ) {
+        val connexion = viewModel.grapheObservable.value?.trouverConnexion(id1, id2) ?: return
+        idsConnexionModifiee = id1 to id2
+
+        val contenu = layoutInflater.inflate(R.layout.dialogue_modifier_connexion, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_modif_connexion)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_modif_connexion)
+        champ.setText(texteInitial ?: connexion.etiquette)
+        champModifConnexion = champ
+        val selecteur = SelecteurCouleur(
+            contenu.findViewById(R.id.pastilles_modif_connexion), couleurInitiale ?: connexion.couleur
+        )
+        selecteurModifConnexion = selecteur
+        val groupe = contenu.findViewById<RadioGroup>(R.id.groupe_epaisseur)
+        // Épaisseur inconnue (ne devrait pas arriver) : on coche la moyenne.
+        val indice = Connexion.EPAISSEURS.indexOf(epaisseurInitiale ?: connexion.epaisseur)
+            .takeIf { it >= 0 } ?: Connexion.EPAISSEURS.indexOf(Connexion.EPAISSEUR_PAR_DEFAUT)
+        groupe.check(boutonsEpaisseur[indice])
+        groupeEpaisseur = groupe
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_modifier_connexion)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNeutralButton(R.string.bouton_supprimer) { _, _ ->
+                viewModel.supprimerConnexion(id1, id2)
+                fermerMenuConnexion()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerMenuConnexion() }
+            .setOnCancelListener { fermerMenuConnexion() }
+            .create()
+
+        val valider = {
+            if (viewModel.modifierConnexion(
+                    id1, id2, champ.text?.toString().orEmpty(), selecteur.couleur, epaisseurChoisie(groupe)
+                )
+            ) {
+                dialogue.dismiss()
+                fermerMenuConnexion()
+            } else {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.show()
+        dialogueModifConnexion = dialogue
+    }
+
+    private fun epaisseurChoisie(groupe: RadioGroup): Float {
+        val indice = boutonsEpaisseur.indexOf(groupe.checkedRadioButtonId)
+        return Connexion.EPAISSEURS.getOrElse(indice) { Connexion.EPAISSEUR_PAR_DEFAUT }
+    }
+
+    private fun fermerMenuConnexion() {
+        idsConnexionModifiee = null
+        dialogueModifConnexion = null
+        champModifConnexion = null
+        selecteurModifConnexion = null
+        groupeEpaisseur = null
+    }
+
     // ---------------- Confirmation de réinitialisation ----------------
 
     private fun ouvrirConfirmationReinitialiser() {
@@ -310,6 +484,18 @@ class MainActivity : AppCompatActivity() {
         // V2 : la connexion en attente est dans le ViewModel ; seuls le texte et la couleur sont à sauver.
         champConnexion?.let { outState.putString(CLE_CONNEXION_TEXTE, it.text?.toString().orEmpty()) }
         selecteurConnexion?.let { outState.putString(CLE_CONNEXION_COULEUR, it.couleur.id) }
+        // V2 : menus ouverts : la cible (identifiants) et ce qui a été saisi.
+        idObjetModifie?.let { id ->
+            outState.putLong(CLE_MENU_OBJET, id)
+            outState.putString(CLE_MENU_OBJET_TEXTE, champModifObjet?.text?.toString().orEmpty())
+            selecteurModifObjet?.let { outState.putString(CLE_MENU_OBJET_COULEUR, it.couleur.id) }
+        }
+        idsConnexionModifiee?.let { (id1, id2) ->
+            outState.putLongArray(CLE_MENU_CONNEXION, longArrayOf(id1, id2))
+            outState.putString(CLE_MENU_CONNEXION_TEXTE, champModifConnexion?.text?.toString().orEmpty())
+            selecteurModifConnexion?.let { outState.putString(CLE_MENU_CONNEXION_COULEUR, it.couleur.id) }
+            groupeEpaisseur?.let { outState.putFloat(CLE_MENU_CONNEXION_EPAISSEUR, epaisseurChoisie(it)) }
+        }
     }
 
     private fun restaurerDialogues(etat: Bundle?) {
@@ -326,6 +512,23 @@ class MainActivity : AppCompatActivity() {
         // V2 : la boîte elle-même est rouverte par l'observateur de connexionEnAttente.
         texteConnexionRestaure = etat.getString(CLE_CONNEXION_TEXTE).orEmpty()
         etat.getString(CLE_CONNEXION_COULEUR)?.let { couleurConnexionRestauree = CouleurObjet.depuisId(it) }
+        // V2 : menus d'objet et de connexion.
+        if (etat.containsKey(CLE_MENU_OBJET)) {
+            ouvrirMenuObjet(
+                etat.getLong(CLE_MENU_OBJET),
+                etat.getString(CLE_MENU_OBJET_TEXTE),
+                etat.getString(CLE_MENU_OBJET_COULEUR)?.let { CouleurObjet.depuisId(it) }
+            )
+        }
+        etat.getLongArray(CLE_MENU_CONNEXION)?.let { ids ->
+            ouvrirMenuConnexion(
+                ids[0],
+                ids[1],
+                etat.getString(CLE_MENU_CONNEXION_TEXTE),
+                etat.getString(CLE_MENU_CONNEXION_COULEUR)?.let { CouleurObjet.depuisId(it) },
+                if (etat.containsKey(CLE_MENU_CONNEXION_EPAISSEUR)) etat.getFloat(CLE_MENU_CONNEXION_EPAISSEUR) else null
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -333,6 +536,8 @@ class MainActivity : AppCompatActivity() {
         dialogueEtiquette?.dismiss()
         dialogueReinitialiser?.dismiss()
         dialogueConnexion?.dismiss() // V2 : dismiss (pas cancel) : la connexion reste en attente
+        dialogueModifObjet?.dismiss()     // V2
+        dialogueModifConnexion?.dismiss() // V2
         super.onDestroy()
     }
 
@@ -344,5 +549,12 @@ class MainActivity : AppCompatActivity() {
         const val CLE_CONFIRMATION = "confirmation_reinitialiser"
         const val CLE_CONNEXION_TEXTE = "connexion_texte" // V2
         const val CLE_CONNEXION_COULEUR = "connexion_couleur" // V2
+        const val CLE_MENU_OBJET = "menu_objet" // V2
+        const val CLE_MENU_OBJET_TEXTE = "menu_objet_texte" // V2
+        const val CLE_MENU_OBJET_COULEUR = "menu_objet_couleur" // V2
+        const val CLE_MENU_CONNEXION = "menu_connexion" // V2
+        const val CLE_MENU_CONNEXION_TEXTE = "menu_connexion_texte" // V2
+        const val CLE_MENU_CONNEXION_COULEUR = "menu_connexion_couleur" // V2
+        const val CLE_MENU_CONNEXION_EPAISSEUR = "menu_connexion_epaisseur" // V2
     }
 }
