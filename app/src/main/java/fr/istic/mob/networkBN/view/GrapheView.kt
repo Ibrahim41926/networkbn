@@ -183,8 +183,21 @@ class GrapheView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    /** Plan, connexions, étiquettes, connexion provisoire et objets, en coordonnées du plan. */
-    private fun dessinerScene(canvas: Canvas) {
+    /**
+     * V2 : image PNG du réseau = tout le plan en taille réelle (sans tenir compte du défilement),
+     * avec connexions, étiquettes et objets. Sans connexion provisoire ni anneau de sélection.
+     */
+    fun creerImage(): Bitmap {
+        val resultat = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+        dessinerScene(Canvas(resultat), avecGesteEnCours = false)
+        return resultat
+    }
+
+    /**
+     * Plan, connexions, étiquettes, connexion provisoire et objets, en coordonnées du plan.
+     * V2 : [avecGesteEnCours] = false pour l'export (ni connexion provisoire, ni anneau de sélection).
+     */
+    private fun dessinerScene(canvas: Canvas, avecGesteEnCours: Boolean = true) {
         canvas.drawBitmap(image, 0f, 0f, null)
         val g = graphe ?: return
 
@@ -212,14 +225,14 @@ class GrapheView @JvmOverloads constructor(
         }
 
         // 3. Connexion en cours de tracé.
-        connexionProvisoire?.let {
+        if (avecGesteEnCours) connexionProvisoire?.let {
             val depart = it.source.position
             canvas.drawLine(depart.x, depart.y, it.xDoigt, it.yDoigt, pinceauProvisoire)
         }
 
         // 4. Objets, dans l'ordre de la liste (dernier = premier plan).
         //    Sélectionné = déplacé (mode modification) ou source de la connexion en cours.
-        val selectionne = objetDeplace ?: connexionProvisoire?.source
+        val selectionne = if (avecGesteEnCours) objetDeplace ?: connexionProvisoire?.source else null
         for (objet in g.objets) dessinerObjet(canvas, objet, objet == selectionne)
     }
 

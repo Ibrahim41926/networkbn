@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import android.graphics.Bitmap
+import fr.istic.mob.networkBN.data.ExportImage
 import fr.istic.mob.networkBN.data.FormatReseau
 import fr.istic.mob.networkBN.data.SauvegardeInvalideException
 import fr.istic.mob.networkBN.data.StockageReseaux
@@ -45,6 +47,9 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
 
     /** V2 : sauvegardes dans le stockage interne privé de l'application. */
     private val stockage = StockageReseaux(File(application.filesDir, "reseaux"))
+
+    /** V2 : images PNG à partager, dans le cache (dossier déclaré dans res/xml/chemins_partage.xml). */
+    private val exportImage = ExportImage(File(application.cacheDir, "images"))
 
     /** V2 : nom de la dernière sauvegarde enregistrée ou ouverte (proposé par Enregistrer), ou null. */
     var nomReseau: String? = null
@@ -132,6 +137,13 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
     /** V2 : noms des sauvegardes à proposer (boîte « Ouvrir » affichée), ou null. */
     private val _sauvegardes = MutableLiveData<List<String>?>(null)
     val sauvegardes: LiveData<List<String>?> = _sauvegardes
+
+    /**
+     * V2 : image PNG prête à partager, ou null. La Vue ouvre le partage Android
+     * puis appelle [imagePartagee] (le partage n'est lancé qu'une fois, même après une rotation).
+     */
+    private val _imageAPartager = MutableLiveData<File?>(null)
+    val imageAPartager: LiveData<File?> = _imageAPartager
 
     /** V2 : message à afficher une fois (résultat d'Enregistrer / Ouvrir), ou null. */
     private val _message = MutableLiveData<MessageReseau?>(null)
@@ -304,6 +316,33 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
                 _operationEnCours.value = false
             }
         }
+    }
+
+    // ---------- V2 : Export PNG + partage ----------
+
+    /**
+     * Écrit [image] (dessinée par la Vue) en PNG hors du thread principal, puis publie le fichier
+     * dans [imageAPartager]. Nom du fichier = nom de la sauvegarde courante, sinon « NetworkBN ».
+     * En cas d'échec : message, rien n'est partagé.
+     */
+    fun exporterImage(image: Bitmap) {
+        if (_operationEnCours.value == true) return
+        val nom = nomReseau ?: NOM_IMAGE_PAR_DEFAUT
+        _operationEnCours.value = true
+        viewModelScope.launch {
+            try {
+                _imageAPartager.value = withContext(Dispatchers.IO) { exportImage.ecrirePng(image, nom) }
+            } catch (e: IOException) {
+                _message.value = MessageReseau(MessageReseau.Type.ERREUR_EXPORT_IMAGE)
+            } finally {
+                _operationEnCours.value = false
+            }
+        }
+    }
+
+    /** La Vue a lancé le partage : il ne sera pas relancé (après une rotation par exemple). */
+    fun imagePartagee() {
+        _imageAPartager.value = null
     }
 
     /** La Vue a affiché [message] : il ne sera pas réaffiché (après une rotation par exemple). */
@@ -570,5 +609,7 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         /** En dessous de cette flèche (en pixels du plan), on remet la connexion droite. */
         const val SEUIL_REDRESSEMENT = 20f
+        /** V2 : nom de l'image exportée quand le réseau n'a jamais été enregistré (non traduit). */
+        const val NOM_IMAGE_PAR_DEFAUT = "NetworkBN"
     }
 }

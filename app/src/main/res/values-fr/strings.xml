@@ -58,6 +58,11 @@
     <string name="message_erreur_lecture">Impossible de lire « %1$s ». Le réseau actuel n\'a pas changé.</string>
     <string name="message_fichier_invalide">« %1$s » n\'est pas un fichier de réseau valide. Le réseau actuel n\'a pas changé.</string>
 
+    <!-- V2 : Export PNG + partage. -->
+    <string name="action_partager_image">Partager en image</string>
+    <string name="titre_partager_image">Partager le réseau</string>
+    <string name="message_erreur_export_image">Impossible de créer l\'image du réseau</string>
+
     <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
     <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>
 

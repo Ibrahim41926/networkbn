@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V2 : dossiers que le FileProvider peut partager : seulement cacheDir/images (images PNG exportées). -->
+<paths>
+    <cache-path
+        name="images"
+        path="images/" />
+</paths>

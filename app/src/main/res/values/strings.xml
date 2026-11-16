@@ -62,6 +62,11 @@
     <string name="message_erreur_lecture">Could not read “%1$s”. The current network is unchanged.</string>
     <string name="message_fichier_invalide">“%1$s” is not a valid network file. The current network is unchanged.</string>
 
+    <!-- V2 : Export PNG + partage. -->
+    <string name="action_partager_image">Share as image</string>
+    <string name="titre_partager_image">Share the network</string>
+    <string name="message_erreur_export_image">Could not create the network image</string>
+
     <string name="titre_reinitialiser">Reset the network?</string>
     <string name="message_reinitialiser">All objects and connections will be deleted.</string>
 

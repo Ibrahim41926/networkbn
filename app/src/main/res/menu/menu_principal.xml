@@ -34,6 +34,11 @@
         android:id="@+id/action_enregistrer"
         android:title="@string/action_enregistrer" />
 
+    <!-- V2 : image PNG du réseau, envoyée via le partage Android. -->
+    <item
+        android:id="@+id/action_partager_image"
+        android:title="@string/action_partager_image" />
+
     <item
         android:id="@+id/action_reinitialiser"
         android:title="@string/action_reinitialiser" />

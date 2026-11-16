@@ -1,5 +1,7 @@
 package fr.istic.mob.networkBN
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -11,6 +13,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.appbar.MaterialToolbar
@@ -30,6 +33,7 @@ import fr.istic.mob.networkBN.view.nom
 import fr.istic.mob.networkBN.viewModel.GraphViewModel
 import fr.istic.mob.networkBN.viewModel.MessageReseau
 import fr.istic.mob.networkBN.viewModel.ModeEdition
+import java.io.File
  
 /**
  * La Vue : affiche l'état du [GraphViewModel] et lui transmet les gestes.
@@ -165,6 +169,13 @@ class MainActivity : AppCompatActivity() {
                 dialogueListeSauvegardes = null
             }
         }
+        // V2 : image PNG prête : partage lancé une seule fois.
+        viewModel.imageAPartager.observe(this) { fichier ->
+            if (fichier != null) {
+                partagerImage(fichier)
+                viewModel.imagePartagee()
+            }
+        }
         // V2 : résultat d'Enregistrer / Ouvrir, affiché une seule fois.
         viewModel.message.observe(this) { message ->
             if (message != null) {
@@ -181,6 +192,22 @@ class MainActivity : AppCompatActivity() {
         MessageReseau.Type.ERREUR_ENREGISTREMENT -> getString(R.string.message_erreur_enregistrement, message.nom)
         MessageReseau.Type.ERREUR_LECTURE -> getString(R.string.message_erreur_lecture, message.nom)
         MessageReseau.Type.FICHIER_INVALIDE -> getString(R.string.message_fichier_invalide, message.nom)
+        MessageReseau.Type.ERREUR_EXPORT_IMAGE -> getString(R.string.message_erreur_export_image) // V2
+    }
+
+    /**
+     * V2 : ouvre le partage Android pour l'image PNG [fichier] (mail, messagerie, Drive...).
+     * Le FileProvider donne à l'application choisie un accès en lecture temporaire à ce seul fichier.
+     */
+    private fun partagerImage(fichier: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fichiers", fichier)
+        val envoi = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri(null, uri) // aperçu de l'image dans la feuille de partage
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(envoi, getString(R.string.titre_partager_image)))
     }
 
     private fun libelleMode(mode: ModeEdition): Int = when (mode) {
@@ -233,7 +260,10 @@ class MainActivity : AppCompatActivity() {
         menu.findItem(idCoche)?.isChecked = true
         // V2 : actions incompatibles avec une opération de fichier en cours.
         val libre = viewModel.operationEnCours.value != true
-        for (id in listOf(R.id.action_nouveau_reseau, R.id.action_ouvrir, R.id.action_enregistrer, R.id.action_reinitialiser)) {
+        for (id in listOf(
+            R.id.action_nouveau_reseau, R.id.action_ouvrir, R.id.action_enregistrer,
+            R.id.action_partager_image, R.id.action_reinitialiser
+        )) {
             menu.findItem(id)?.isEnabled = libre
         }
         return super.onPrepareOptionsMenu(menu)
@@ -248,6 +278,7 @@ class MainActivity : AppCompatActivity() {
             R.id.action_nouveau_reseau -> demanderNouveauReseau() // V2
             R.id.action_ouvrir -> demanderOuverture()           // V2
             R.id.action_enregistrer -> ouvrirSaisieNomSauvegarde(viewModel.nomReseau.orEmpty()) // V2
+            R.id.action_partager_image -> viewModel.exporterImage(vueGraphe.creerImage())       // V2
             R.id.action_reinitialiser -> ouvrirConfirmationReinitialiser()
             else -> return super.onOptionsItemSelected(item)
         }
