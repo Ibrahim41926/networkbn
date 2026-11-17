@@ -11,24 +11,20 @@
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceContainer" />
 
-    <!-- Le plan est affiché à l'échelle 1:1 : on défile s'il dépasse l'écran. -->
-    <ScrollView
-        android:id="@+id/defilement_vertical"
+    <!-- V2 : indicateur de traitement pendant Enregistrer / Ouvrir. -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/indicateur_traitement"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <!-- V2 : le plan est affiché à l'échelle 1:1. La vue gère elle-même le défilement
+         (mode Navigation) : aucune ScrollView ne doit ajouter un second décalage. -->
+    <fr.istic.mob.networkBN.view.GrapheView
+        android:id="@+id/vue_graphe"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <HorizontalScrollView
-            android:id="@+id/defilement_horizontal"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content">
-
-            <fr.istic.mob.networkBN.view.GrapheView
-                android:id="@+id/vue_graphe"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-
-        </HorizontalScrollView>
-    </ScrollView>
+        android:layout_weight="1" />
 
 </LinearLayout>

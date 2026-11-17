@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V2 : menu d'une connexion : étiquette, couleur et épaisseur. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/cadre_modif_connexion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/indice_etiquette">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/champ_modif_connexion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/libelle_couleur"
+        android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+    <!-- Pastilles de couleur, ajoutées par SelecteurCouleur. -->
+    <LinearLayout
+        android:id="@+id/pastilles_modif_connexion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/libelle_epaisseur"
+        android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+    <!-- Même ordre que Connexion.EPAISSEURS. -->
+    <RadioGroup
+        android:id="@+id/groupe_epaisseur"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/epaisseur_fine"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/epaisseur_fine" />
+
+        <RadioButton
+            android:id="@+id/epaisseur_moyenne"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/epaisseur_moyenne" />
+
+        <RadioButton
+            android:id="@+id/epaisseur_epaisse"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/epaisseur_epaisse" />
+
+    </RadioGroup>
+
+</LinearLayout>

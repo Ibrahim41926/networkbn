@@ -1,25 +1,40 @@
 package fr.istic.mob.networkBN
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
+import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.RadioGroup
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import fr.istic.mob.networkBN.model.Connexion
+import fr.istic.mob.networkBN.model.CouleurObjet
 import fr.istic.mob.networkBN.model.Objet
+import fr.istic.mob.networkBN.model.Plan
 import fr.istic.mob.networkBN.view.GrapheView
+import fr.istic.mob.networkBN.view.SelecteurCouleur
+import fr.istic.mob.networkBN.view.dimensionsPlan
+import fr.istic.mob.networkBN.view.nom
 import fr.istic.mob.networkBN.viewModel.GraphViewModel
+import fr.istic.mob.networkBN.viewModel.MessageReseau
 import fr.istic.mob.networkBN.viewModel.ModeEdition
-
+import java.io.File
+ 
 /**
  * La Vue : affiche l'état du [GraphViewModel] et lui transmet les gestes.
  * Les boîtes de dialogue sont recréées après une rotation d'écran.
@@ -37,7 +52,49 @@ class MainActivity : AppCompatActivity() {
 
     private var dialogueEtiquette: AlertDialog? = null
     private var champEtiquette: TextInputEditText? = null
+    /** V2 : pastilles de la boîte « Nouvel objet » ouverte (couleur non mémorisée d'une ouverture à l'autre). */
+    private var selecteurObjet: SelecteurCouleur? = null
     private var dialogueReinitialiser: AlertDialog? = null
+
+    /** V2 : boîte « Nouvelle connexion » (ouverte tant que le ViewModel a une connexion en attente). */
+    private var dialogueConnexion: AlertDialog? = null
+    private var champConnexion: TextInputEditText? = null
+    private var selecteurConnexion: SelecteurCouleur? = null
+    /** V2 : texte et couleur saisis avant une rotation, remis dans la boîte recréée. */
+    private var texteConnexionRestaure: String = ""
+    private var couleurConnexionRestauree: CouleurObjet = Connexion.COULEUR_PAR_DEFAUT
+
+    /** V2 : menu « Modifier l'objet » : identifiant de l'objet visé (null si fermé). */
+    private var idObjetModifie: Long? = null
+    private var dialogueModifObjet: AlertDialog? = null
+    private var champModifObjet: TextInputEditText? = null
+    private var selecteurModifObjet: SelecteurCouleur? = null
+
+    /** V2 : menu « Modifier la connexion » : identifiants de ses deux extrémités (null si fermé). */
+    private var idsConnexionModifiee: Pair<Long, Long>? = null
+    private var dialogueModifConnexion: AlertDialog? = null
+    private var champModifConnexion: TextInputEditText? = null
+    private var selecteurModifConnexion: SelecteurCouleur? = null
+    private var groupeEpaisseur: RadioGroup? = null
+
+    /** V2 : Nouveau réseau : confirmation (réseau non enregistré), puis choix du plan. */
+    private var dialogueConfirmationNouveau: AlertDialog? = null
+    private var dialogueChoixPlan: AlertDialog? = null
+    /** V2 : plan coché dans la boîte « Nouveau réseau » (null si fermée). */
+    private var planChoisi: Plan? = null
+
+    /** V2 : Enregistrer : boîte du nom, puis confirmation si le nom existe déjà. */
+    private var dialogueNomSauvegarde: AlertDialog? = null
+    private var champNomSauvegarde: TextInputEditText? = null
+    private var dialogueRemplacerSauvegarde: AlertDialog? = null
+    /** V2 : nom à remplacer (confirmation ouverte), ou null. */
+    private var nomARemplacer: String? = null
+
+    /** V2 : Ouvrir : confirmation (réseau non enregistré), puis liste des sauvegardes. */
+    private var dialogueConfirmationOuvrir: AlertDialog? = null
+    private var dialogueListeSauvegardes: AlertDialog? = null
+
+    private lateinit var indicateurTraitement: LinearProgressIndicator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -63,8 +120,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         vueGraphe = findViewById(R.id.vue_graphe)
-        viewModel.definirPlan(vueGraphe.largeurPlan, vueGraphe.hauteurPlan)
+        indicateurTraitement = findViewById(R.id.indicateur_traitement) // V2
+        // V2 : les limites du graphe suivent la taille du plan courant (conservé par le ViewModel).
+        val (largeur, hauteur) = dimensionsPlan(resources, viewModel.plan.value ?: Plan.PAR_DEFAUT)
+        viewModel.definirPlan(largeur, hauteur)
         vueGraphe.ecouteur = ecouteurGestes
+        // V2 : la taille de la vue borne le défilement.
+        vueGraphe.ecouteurTaille = { largeurVue, hauteurVue -> viewModel.definirTailleVue(largeurVue, hauteurVue) }
 
         observerViewModel()
         restaurerDialogues(savedInstanceState)
@@ -75,29 +137,103 @@ class MainActivity : AppCompatActivity() {
     private fun observerViewModel() {
         // Le ViewModel republie la même instance : l'observateur est appelé à chaque fois.
         viewModel.grapheObservable.observe(this) { vueGraphe.graphe = it }
+        viewModel.plan.observe(this) { vueGraphe.plan = it } // V2 : plan affiché
+        viewModel.defilement.observe(this) { vueGraphe.defilement = it } // V2
         viewModel.connexionProvisoire.observe(this) { vueGraphe.connexionProvisoire = it }
+        viewModel.objetDeplace.observe(this) { vueGraphe.objetDeplace = it } // V2 : anneau de sélection
+        // V2 : la boîte « Nouvelle connexion » suit l'état du ViewModel (donc survit à la rotation).
+        viewModel.connexionEnAttente.observe(this) { attente ->
+            if (attente != null) {
+                if (dialogueConnexion == null) ouvrirSaisieConnexion()
+            } else {
+                dialogueConnexion?.dismiss()
+                fermerSaisieConnexion()
+            }
+        }
         viewModel.mode.observe(this) { mode ->
             barreOutils.subtitle = getString(R.string.sous_titre_mode, getString(libelleMode(mode)))
 
             invalidateOptionsMenu()
         }
+        // V2 : pendant une opération de fichier : indicateur visible, actions du menu désactivées.
+        viewModel.operationEnCours.observe(this) { enCours ->
+            indicateurTraitement.visibility = if (enCours) View.VISIBLE else View.GONE
+            invalidateOptionsMenu()
+        }
+        // V2 : la boîte « Ouvrir » suit l'état du ViewModel (donc survit à la rotation).
+        viewModel.sauvegardes.observe(this) { noms ->
+            if (noms != null) {
+                if (dialogueListeSauvegardes == null) ouvrirListeSauvegardes(noms)
+            } else {
+                dialogueListeSauvegardes?.dismiss()
+                dialogueListeSauvegardes = null
+            }
+        }
+        // V2 : image PNG prête : partage lancé une seule fois.
+        viewModel.imageAPartager.observe(this) { fichier ->
+            if (fichier != null) {
+                partagerImage(fichier)
+                viewModel.imagePartagee()
+            }
+        }
+        // V2 : résultat d'Enregistrer / Ouvrir, affiché une seule fois.
+        viewModel.message.observe(this) { message ->
+            if (message != null) {
+                Snackbar.make(vueGraphe, texteMessage(message), Snackbar.LENGTH_LONG).show()
+                viewModel.messageAffiche()
+            }
+        }
+    }
+
+    private fun texteMessage(message: MessageReseau): String = when (message.type) {
+        MessageReseau.Type.ENREGISTRE -> getString(R.string.message_reseau_enregistre, message.nom)
+        MessageReseau.Type.OUVERT -> getString(R.string.message_reseau_ouvert, message.nom)
+        MessageReseau.Type.AUCUNE_SAUVEGARDE -> getString(R.string.message_aucune_sauvegarde)
+        MessageReseau.Type.ERREUR_ENREGISTREMENT -> getString(R.string.message_erreur_enregistrement, message.nom)
+        MessageReseau.Type.ERREUR_LECTURE -> getString(R.string.message_erreur_lecture, message.nom)
+        MessageReseau.Type.FICHIER_INVALIDE -> getString(R.string.message_fichier_invalide, message.nom)
+        MessageReseau.Type.ERREUR_EXPORT_IMAGE -> getString(R.string.message_erreur_export_image) // V2
+    }
+
+    /**
+     * V2 : ouvre le partage Android pour l'image PNG [fichier] (mail, messagerie, Drive...).
+     * Le FileProvider donne à l'application choisie un accès en lecture temporaire à ce seul fichier.
+     */
+    private fun partagerImage(fichier: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fichiers", fichier)
+        val envoi = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri(null, uri) // aperçu de l'image dans la feuille de partage
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(envoi, getString(R.string.titre_partager_image)))
     }
 
     private fun libelleMode(mode: ModeEdition): Int = when (mode) {
         ModeEdition.AJOUT_OBJET -> R.string.mode_ajout_objet
         ModeEdition.AJOUT_CONNEXION -> R.string.mode_ajout_connexion
         ModeEdition.MODIFICATION -> R.string.mode_modification
+        ModeEdition.NAVIGATION -> R.string.mode_navigation // V2
     }
 
     // ---------------- Gestes (vue -> ViewModel) ----------------
 
     private val ecouteurGestes = object : GrapheView.EcouteurGestes {
-        override fun appuiLong(x: Float, y: Float, objetTouche: Objet?) {
-            if (viewModel.peutAjouterObjet(x, y, objetTouche)) ouvrirSaisieEtiquette(x, y)
+        override fun appuiLong(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?): Boolean {
+            when {
+                viewModel.peutAjouterObjet(x, y, objetTouche, connexionTouchee) -> ouvrirSaisieEtiquette(x, y)
+                // V2 : menus en mode modification (objets prioritaires sur les connexions).
+                objetTouche != null && viewModel.peutModifierObjet(objetTouche) -> ouvrirMenuObjet(objetTouche.id)
+                connexionTouchee != null && viewModel.peutModifierConnexion(connexionTouchee) ->
+                    ouvrirMenuConnexion(connexionTouchee.extremite1.id, connexionTouchee.extremite2.id)
+                else -> return false
+            }
+            return true
         }
 
-        override fun debutGlissement(x: Float, y: Float, objetTouche: Objet?) =
-            viewModel.debutGlissement(x, y, objetTouche)
+        override fun debutGlissement(x: Float, y: Float, objetTouche: Objet?, connexionTouchee: Connexion?) =
+            viewModel.debutGlissement(x, y, objetTouche, connexionTouchee)
 
         override fun glissement(x: Float, y: Float) = viewModel.glissement(x, y)
 
@@ -119,8 +255,17 @@ class MainActivity : AppCompatActivity() {
             ModeEdition.AJOUT_OBJET -> R.id.mode_ajout_objet
             ModeEdition.AJOUT_CONNEXION -> R.id.mode_ajout_connexion
             ModeEdition.MODIFICATION -> R.id.mode_modification
+            ModeEdition.NAVIGATION -> R.id.mode_navigation // V2
         }
         menu.findItem(idCoche)?.isChecked = true
+        // V2 : actions incompatibles avec une opération de fichier en cours.
+        val libre = viewModel.operationEnCours.value != true
+        for (id in listOf(
+            R.id.action_nouveau_reseau, R.id.action_ouvrir, R.id.action_enregistrer,
+            R.id.action_partager_image, R.id.action_reinitialiser
+        )) {
+            menu.findItem(id)?.isEnabled = libre
+        }
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -129,6 +274,11 @@ class MainActivity : AppCompatActivity() {
             R.id.mode_ajout_objet -> viewModel.changerMode(ModeEdition.AJOUT_OBJET)
             R.id.mode_ajout_connexion -> viewModel.changerMode(ModeEdition.AJOUT_CONNEXION)
             R.id.mode_modification -> viewModel.changerMode(ModeEdition.MODIFICATION)
+            R.id.mode_navigation -> viewModel.changerMode(ModeEdition.NAVIGATION) // V2
+            R.id.action_nouveau_reseau -> demanderNouveauReseau() // V2
+            R.id.action_ouvrir -> demanderOuverture()           // V2
+            R.id.action_enregistrer -> ouvrirSaisieNomSauvegarde(viewModel.nomReseau.orEmpty()) // V2
+            R.id.action_partager_image -> viewModel.exporterImage(vueGraphe.creerImage())       // V2
             R.id.action_reinitialiser -> ouvrirConfirmationReinitialiser()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -137,7 +287,12 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- Boîte de saisie d'étiquette ----------------
 
-    private fun ouvrirSaisieEtiquette(x: Float, y: Float, texteInitial: String = "") {
+    private fun ouvrirSaisieEtiquette(
+        x: Float,
+        y: Float,
+        texteInitial: String = "",
+        couleurInitiale: CouleurObjet = CouleurObjet.PAR_DEFAUT // V2
+    ) {
         saisieX = x
         saisieY = y
 
@@ -146,6 +301,9 @@ class MainActivity : AppCompatActivity() {
         val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette)
         champ.setText(texteInitial)
         champEtiquette = champ
+        // V2 : choix de la couleur (vert à l'ouverture, ou couleur restaurée après rotation).
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur), couleurInitiale)
+        selecteurObjet = selecteur
 
         val dialogue = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.titre_ajout_objet)
@@ -157,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         val valider = {
-            if (viewModel.validerEtiquette(champ.text?.toString().orEmpty(), x, y)) {
+            if (viewModel.validerEtiquette(champ.text?.toString().orEmpty(), x, y, selecteur.couleur)) {
                 dialogue.dismiss()
                 fermerSaisieEtiquette()
             } else {
@@ -188,6 +346,369 @@ class MainActivity : AppCompatActivity() {
         saisieY = null
         dialogueEtiquette = null
         champEtiquette = null
+        // V2 : la couleur n'est pas mémorisée pour la prochaine ouverture.
+        selecteurObjet = null
+    }
+
+    // ---------------- V2 : boîte « Nouvelle connexion » ----------------
+
+    private fun ouvrirSaisieConnexion() {
+        val contenu = layoutInflater.inflate(R.layout.dialogue_etiquette_connexion, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_etiquette_connexion)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette_connexion)
+        champ.setText(texteConnexionRestaure)
+        texteConnexionRestaure = ""
+        champConnexion = champ
+        // V2 : choix de la couleur de la connexion (bleu à l'ouverture, ou restaurée après rotation).
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur_connexion), couleurConnexionRestauree)
+        couleurConnexionRestauree = Connexion.COULEUR_PAR_DEFAUT
+        selecteurConnexion = selecteur
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_ajout_connexion)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            // Annuler, retour ou clic hors de la boîte : le ViewModel efface l'aperçu,
+            // puis l'observateur ferme la boîte.
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> viewModel.annulerConnexionEnAttente() }
+            .setOnCancelListener { viewModel.annulerConnexionEnAttente() }
+            .create()
+
+        // Si accepté, l'observateur de connexionEnAttente ferme la boîte.
+        val valider = {
+            if (!viewModel.validerEtiquetteConnexion(champ.text?.toString().orEmpty(), selecteur.couleur)) {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialogue.show()
+        champ.requestFocus()
+        dialogueConnexion = dialogue
+    }
+
+    private fun fermerSaisieConnexion() {
+        dialogueConnexion = null
+        champConnexion = null
+        selecteurConnexion = null // V2 : couleur non mémorisée pour la prochaine ouverture
+    }
+
+    // ---------------- V2 : menu d'un objet (appui long en mode modification) ----------------
+
+    /**
+     * Boîte « Modifier l'objet » : étiquette + couleur, boutons Supprimer / Annuler / OK.
+     * [texteInitial] et [couleurInitiale] : valeurs saisies avant une rotation (sinon celles de l'objet).
+     */
+    private fun ouvrirMenuObjet(id: Long, texteInitial: String? = null, couleurInitiale: CouleurObjet? = null) {
+        val objet = viewModel.grapheObservable.value?.trouverObjet(id) ?: return
+        idObjetModifie = id
+
+        val contenu = layoutInflater.inflate(R.layout.dialogue_etiquette, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_etiquette)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_etiquette)
+        champ.setText(texteInitial ?: objet.etiquette)
+        champModifObjet = champ
+        val selecteur = SelecteurCouleur(contenu.findViewById(R.id.pastilles_couleur), couleurInitiale ?: objet.couleur)
+        selecteurModifObjet = selecteur
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_modifier_objet)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNeutralButton(R.string.bouton_supprimer) { _, _ ->
+                viewModel.supprimerObjet(id)
+                fermerMenuObjet()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerMenuObjet() }
+            .setOnCancelListener { fermerMenuObjet() }
+            .create()
+
+        val valider = {
+            if (viewModel.modifierObjet(id, champ.text?.toString().orEmpty(), selecteur.couleur)) {
+                dialogue.dismiss()
+                fermerMenuObjet()
+            } else {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.show()
+        dialogueModifObjet = dialogue
+    }
+
+    private fun fermerMenuObjet() {
+        idObjetModifie = null
+        dialogueModifObjet = null
+        champModifObjet = null
+        selecteurModifObjet = null
+    }
+
+    // ---------------- V2 : menu d'une connexion (appui long sur son étiquette) ----------------
+
+    /** Boutons d'épaisseur du layout, dans le même ordre que [Connexion.EPAISSEURS]. */
+    private val boutonsEpaisseur = listOf(R.id.epaisseur_fine, R.id.epaisseur_moyenne, R.id.epaisseur_epaisse)
+
+    /**
+     * Boîte « Modifier la connexion » : étiquette + couleur + épaisseur, boutons Supprimer / Annuler / OK.
+     * La connexion est désignée par les identifiants de ses extrémités [id1] et [id2].
+     */
+    private fun ouvrirMenuConnexion(
+        id1: Long,
+        id2: Long,
+        texteInitial: String? = null,
+        couleurInitiale: CouleurObjet? = null,
+        epaisseurInitiale: Float? = null
+    ) {
+        val connexion = viewModel.grapheObservable.value?.trouverConnexion(id1, id2) ?: return
+        idsConnexionModifiee = id1 to id2
+
+        val contenu = layoutInflater.inflate(R.layout.dialogue_modifier_connexion, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_modif_connexion)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_modif_connexion)
+        champ.setText(texteInitial ?: connexion.etiquette)
+        champModifConnexion = champ
+        val selecteur = SelecteurCouleur(
+            contenu.findViewById(R.id.pastilles_modif_connexion), couleurInitiale ?: connexion.couleur
+        )
+        selecteurModifConnexion = selecteur
+        val groupe = contenu.findViewById<RadioGroup>(R.id.groupe_epaisseur)
+        // Épaisseur inconnue (ne devrait pas arriver) : on coche la moyenne.
+        val indice = Connexion.EPAISSEURS.indexOf(epaisseurInitiale ?: connexion.epaisseur)
+            .takeIf { it >= 0 } ?: Connexion.EPAISSEURS.indexOf(Connexion.EPAISSEUR_PAR_DEFAUT)
+        groupe.check(boutonsEpaisseur[indice])
+        groupeEpaisseur = groupe
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_modifier_connexion)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si l'étiquette est refusée.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNeutralButton(R.string.bouton_supprimer) { _, _ ->
+                viewModel.supprimerConnexion(id1, id2)
+                fermerMenuConnexion()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerMenuConnexion() }
+            .setOnCancelListener { fermerMenuConnexion() }
+            .create()
+
+        val valider = {
+            if (viewModel.modifierConnexion(
+                    id1, id2, champ.text?.toString().orEmpty(), selecteur.couleur, epaisseurChoisie(groupe)
+                )
+            ) {
+                dialogue.dismiss()
+                fermerMenuConnexion()
+            } else {
+                cadre.error = getString(R.string.erreur_etiquette_vide)
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.show()
+        dialogueModifConnexion = dialogue
+    }
+
+    private fun epaisseurChoisie(groupe: RadioGroup): Float {
+        val indice = boutonsEpaisseur.indexOf(groupe.checkedRadioButtonId)
+        return Connexion.EPAISSEURS.getOrElse(indice) { Connexion.EPAISSEUR_PAR_DEFAUT }
+    }
+
+    private fun fermerMenuConnexion() {
+        idsConnexionModifiee = null
+        dialogueModifConnexion = null
+        champModifConnexion = null
+        selecteurModifConnexion = null
+        groupeEpaisseur = null
+    }
+
+    // ---------------- V2 : Nouveau réseau ----------------
+
+    /** Réseau modifié non enregistré : confirmation d'abord ; sinon, directement le choix du plan. */
+    private fun demanderNouveauReseau() {
+        if (viewModel.modifie.value == true) ouvrirConfirmationNouveau() else ouvrirChoixPlan()
+    }
+
+    private fun ouvrirConfirmationNouveau() {
+        dialogueConfirmationNouveau = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_reseau_non_enregistre)
+            .setMessage(R.string.message_reseau_non_enregistre)
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                dialogueConfirmationNouveau = null
+                ouvrirChoixPlan()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> dialogueConfirmationNouveau = null }
+            .setOnCancelListener { dialogueConfirmationNouveau = null }
+            .show()
+    }
+
+    /** Boîte « Choisir un plan » : un bouton radio par plan, [planInitial] coché (plan courant par défaut). */
+    private fun ouvrirChoixPlan(planInitial: Plan = viewModel.plan.value ?: Plan.PAR_DEFAUT) {
+        planChoisi = planInitial
+        val plans = Plan.entries
+        val noms = plans.map { getString(it.nom) }.toTypedArray()
+
+        dialogueChoixPlan = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_choisir_plan)
+            .setSingleChoiceItems(noms, plans.indexOf(planInitial)) { _, indice -> planChoisi = plans[indice] }
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                val plan = planChoisi ?: planInitial
+                fermerChoixPlan()
+                val (largeur, hauteur) = dimensionsPlan(resources, plan)
+                viewModel.nouveauReseau(plan, largeur, hauteur) // remet aussi le défilement en (0, 0)
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerChoixPlan() }
+            .setOnCancelListener { fermerChoixPlan() }
+            .show()
+    }
+
+    private fun fermerChoixPlan() {
+        dialogueChoixPlan = null
+        planChoisi = null
+    }
+
+    // ---------------- V2 : Enregistrer ----------------
+
+    /** Boîte « Enregistrer le réseau » : nom de la sauvegarde ([texteInitial] = dernier nom utilisé). */
+    private fun ouvrirSaisieNomSauvegarde(texteInitial: String) {
+        val contenu = layoutInflater.inflate(R.layout.dialogue_nom_sauvegarde, null)
+        val cadre = contenu.findViewById<TextInputLayout>(R.id.cadre_nom_sauvegarde)
+        val champ = contenu.findViewById<TextInputEditText>(R.id.champ_nom_sauvegarde)
+        champ.setText(texteInitial)
+        champ.setSelection(champ.text?.length ?: 0)
+        champNomSauvegarde = champ
+
+        val dialogue = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_enregistrer)
+            .setView(contenu)
+            // Listener posé plus bas : la boîte ne doit pas se fermer si le nom est refusé.
+            .setPositiveButton(R.string.bouton_ok, null)
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerSaisieNomSauvegarde() }
+            .setOnCancelListener { fermerSaisieNomSauvegarde() }
+            .create()
+
+        val valider = {
+            val nom = champ.text?.toString().orEmpty().trim()
+            when {
+                nom.isEmpty() -> cadre.error = getString(R.string.erreur_nom_vide)
+                !viewModel.nomSauvegardeValide(nom) -> cadre.error = getString(R.string.erreur_nom_invalide)
+                else -> {
+                    dialogue.dismiss()
+                    fermerSaisieNomSauvegarde()
+                    // Un nom existant nécessite une confirmation avant remplacement.
+                    if (viewModel.sauvegardeExiste(nom)) ouvrirConfirmationRemplacer(nom) else viewModel.enregistrer(nom)
+                }
+            }
+        }
+
+        dialogue.setOnShowListener {
+            dialogue.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { valider() }
+        }
+        champ.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                valider()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialogue.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialogue.show()
+        champ.requestFocus()
+        dialogueNomSauvegarde = dialogue
+    }
+
+    private fun fermerSaisieNomSauvegarde() {
+        dialogueNomSauvegarde = null
+        champNomSauvegarde = null
+    }
+
+    private fun ouvrirConfirmationRemplacer(nom: String) {
+        nomARemplacer = nom
+        dialogueRemplacerSauvegarde = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_remplacer_sauvegarde)
+            .setMessage(getString(R.string.message_remplacer_sauvegarde, nom))
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                fermerConfirmationRemplacer()
+                viewModel.enregistrer(nom)
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> fermerConfirmationRemplacer() }
+            .setOnCancelListener { fermerConfirmationRemplacer() }
+            .show()
+    }
+
+    private fun fermerConfirmationRemplacer() {
+        dialogueRemplacerSauvegarde = null
+        nomARemplacer = null
+    }
+
+    // ---------------- V2 : Ouvrir ----------------
+
+    /** Réseau modifié non enregistré : confirmation d'abord ; sinon, directement la liste. */
+    private fun demanderOuverture() {
+        if (viewModel.modifie.value == true) ouvrirConfirmationOuvrir() else viewModel.demanderListeSauvegardes()
+    }
+
+    private fun ouvrirConfirmationOuvrir() {
+        dialogueConfirmationOuvrir = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_reseau_non_enregistre)
+            .setMessage(R.string.message_reseau_non_enregistre)
+            .setPositiveButton(R.string.bouton_ok) { _, _ ->
+                dialogueConfirmationOuvrir = null
+                viewModel.demanderListeSauvegardes()
+            }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> dialogueConfirmationOuvrir = null }
+            .setOnCancelListener { dialogueConfirmationOuvrir = null }
+            .show()
+    }
+
+    /** Boîte « Ouvrir un réseau » : un clic sur un nom charge cette sauvegarde. */
+    private fun ouvrirListeSauvegardes(noms: List<String>) {
+        // Taille de chaque plan, pour que le ViewModel valide les positions lues.
+        val dimensions = Plan.entries.associateWith { dimensionsPlan(resources, it) }
+        dialogueListeSauvegardes = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.titre_ouvrir)
+            .setItems(noms.toTypedArray()) { _, indice -> viewModel.ouvrir(noms[indice], dimensions) }
+            .setNegativeButton(R.string.bouton_annuler) { _, _ -> viewModel.fermerListeSauvegardes() }
+            .setOnCancelListener { viewModel.fermerListeSauvegardes() }
+            .show()
     }
 
     // ---------------- Confirmation de réinitialisation ----------------
@@ -215,8 +736,31 @@ class MainActivity : AppCompatActivity() {
             outState.putFloat(CLE_SAISIE_X, x)
             outState.putFloat(CLE_SAISIE_Y, y)
             outState.putString(CLE_SAISIE_TEXTE, champEtiquette?.text?.toString().orEmpty())
+            selecteurObjet?.let { outState.putString(CLE_SAISIE_COULEUR, it.couleur.id) } // V2
         }
         outState.putBoolean(CLE_CONFIRMATION, dialogueReinitialiser != null)
+        // V2 : la connexion en attente est dans le ViewModel ; seuls le texte et la couleur sont à sauver.
+        champConnexion?.let { outState.putString(CLE_CONNEXION_TEXTE, it.text?.toString().orEmpty()) }
+        selecteurConnexion?.let { outState.putString(CLE_CONNEXION_COULEUR, it.couleur.id) }
+        // V2 : menus ouverts : la cible (identifiants) et ce qui a été saisi.
+        idObjetModifie?.let { id ->
+            outState.putLong(CLE_MENU_OBJET, id)
+            outState.putString(CLE_MENU_OBJET_TEXTE, champModifObjet?.text?.toString().orEmpty())
+            selecteurModifObjet?.let { outState.putString(CLE_MENU_OBJET_COULEUR, it.couleur.id) }
+        }
+        idsConnexionModifiee?.let { (id1, id2) ->
+            outState.putLongArray(CLE_MENU_CONNEXION, longArrayOf(id1, id2))
+            outState.putString(CLE_MENU_CONNEXION_TEXTE, champModifConnexion?.text?.toString().orEmpty())
+            selecteurModifConnexion?.let { outState.putString(CLE_MENU_CONNEXION_COULEUR, it.couleur.id) }
+            groupeEpaisseur?.let { outState.putFloat(CLE_MENU_CONNEXION_EPAISSEUR, epaisseurChoisie(it)) }
+        }
+        // V2 : Nouveau réseau : confirmation ouverte, ou plan coché dans la boîte de choix.
+        outState.putBoolean(CLE_CONFIRMATION_NOUVEAU, dialogueConfirmationNouveau != null)
+        planChoisi?.let { outState.putString(CLE_CHOIX_PLAN, it.id) }
+        // V2 : Enregistrer / Ouvrir (la liste des sauvegardes est gardée par le ViewModel).
+        champNomSauvegarde?.let { outState.putString(CLE_NOM_SAUVEGARDE, it.text?.toString().orEmpty()) }
+        nomARemplacer?.let { outState.putString(CLE_REMPLACER_SAUVEGARDE, it) }
+        outState.putBoolean(CLE_CONFIRMATION_OUVRIR, dialogueConfirmationOuvrir != null)
     }
 
     private fun restaurerDialogues(etat: Bundle?) {
@@ -225,16 +769,53 @@ class MainActivity : AppCompatActivity() {
             ouvrirSaisieEtiquette(
                 etat.getFloat(CLE_SAISIE_X),
                 etat.getFloat(CLE_SAISIE_Y),
-                etat.getString(CLE_SAISIE_TEXTE).orEmpty()
+                etat.getString(CLE_SAISIE_TEXTE).orEmpty(),
+                CouleurObjet.depuisId(etat.getString(CLE_SAISIE_COULEUR)) // V2
             )
         }
         if (etat.getBoolean(CLE_CONFIRMATION)) ouvrirConfirmationReinitialiser()
+        // V2 : la boîte elle-même est rouverte par l'observateur de connexionEnAttente.
+        texteConnexionRestaure = etat.getString(CLE_CONNEXION_TEXTE).orEmpty()
+        etat.getString(CLE_CONNEXION_COULEUR)?.let { couleurConnexionRestauree = CouleurObjet.depuisId(it) }
+        // V2 : menus d'objet et de connexion.
+        if (etat.containsKey(CLE_MENU_OBJET)) {
+            ouvrirMenuObjet(
+                etat.getLong(CLE_MENU_OBJET),
+                etat.getString(CLE_MENU_OBJET_TEXTE),
+                etat.getString(CLE_MENU_OBJET_COULEUR)?.let { CouleurObjet.depuisId(it) }
+            )
+        }
+        etat.getLongArray(CLE_MENU_CONNEXION)?.let { ids ->
+            ouvrirMenuConnexion(
+                ids[0],
+                ids[1],
+                etat.getString(CLE_MENU_CONNEXION_TEXTE),
+                etat.getString(CLE_MENU_CONNEXION_COULEUR)?.let { CouleurObjet.depuisId(it) },
+                if (etat.containsKey(CLE_MENU_CONNEXION_EPAISSEUR)) etat.getFloat(CLE_MENU_CONNEXION_EPAISSEUR) else null
+            )
+        }
+        // V2 : Nouveau réseau.
+        if (etat.getBoolean(CLE_CONFIRMATION_NOUVEAU)) ouvrirConfirmationNouveau()
+        etat.getString(CLE_CHOIX_PLAN)?.let { id -> ouvrirChoixPlan(Plan.depuisId(id) ?: Plan.PAR_DEFAUT) }
+        // V2 : Enregistrer / Ouvrir.
+        etat.getString(CLE_NOM_SAUVEGARDE)?.let { ouvrirSaisieNomSauvegarde(it) }
+        etat.getString(CLE_REMPLACER_SAUVEGARDE)?.let { ouvrirConfirmationRemplacer(it) }
+        if (etat.getBoolean(CLE_CONFIRMATION_OUVRIR)) ouvrirConfirmationOuvrir()
     }
 
     override fun onDestroy() {
         // Évite les fuites de fenêtre ; l'état a déjà été sauvegardé dans onSaveInstanceState.
         dialogueEtiquette?.dismiss()
         dialogueReinitialiser?.dismiss()
+        dialogueConnexion?.dismiss() // V2 : dismiss (pas cancel) : la connexion reste en attente
+        dialogueModifObjet?.dismiss()     // V2
+        dialogueModifConnexion?.dismiss() // V2
+        dialogueConfirmationNouveau?.dismiss() // V2
+        dialogueChoixPlan?.dismiss()           // V2
+        dialogueNomSauvegarde?.dismiss()       // V2
+        dialogueRemplacerSauvegarde?.dismiss() // V2
+        dialogueConfirmationOuvrir?.dismiss()  // V2
+        dialogueListeSauvegardes?.dismiss()    // V2 : dismiss (pas cancel) : la liste reste dans le ViewModel
         super.onDestroy()
     }
 
@@ -242,6 +823,21 @@ class MainActivity : AppCompatActivity() {
         const val CLE_SAISIE_X = "saisie_x"
         const val CLE_SAISIE_Y = "saisie_y"
         const val CLE_SAISIE_TEXTE = "saisie_texte"
+        const val CLE_SAISIE_COULEUR = "saisie_couleur" // V2
         const val CLE_CONFIRMATION = "confirmation_reinitialiser"
+        const val CLE_CONNEXION_TEXTE = "connexion_texte" // V2
+        const val CLE_CONNEXION_COULEUR = "connexion_couleur" // V2
+        const val CLE_MENU_OBJET = "menu_objet" // V2
+        const val CLE_MENU_OBJET_TEXTE = "menu_objet_texte" // V2
+        const val CLE_MENU_OBJET_COULEUR = "menu_objet_couleur" // V2
+        const val CLE_MENU_CONNEXION = "menu_connexion" // V2
+        const val CLE_MENU_CONNEXION_TEXTE = "menu_connexion_texte" // V2
+        const val CLE_MENU_CONNEXION_COULEUR = "menu_connexion_couleur" // V2
+        const val CLE_MENU_CONNEXION_EPAISSEUR = "menu_connexion_epaisseur" // V2
+        const val CLE_CONFIRMATION_NOUVEAU = "confirmation_nouveau_reseau" // V2
+        const val CLE_CHOIX_PLAN = "choix_plan" // V2
+        const val CLE_NOM_SAUVEGARDE = "nom_sauvegarde" // V2
+        const val CLE_REMPLACER_SAUVEGARDE = "remplacer_sauvegarde" // V2
+        const val CLE_CONFIRMATION_OUVRIR = "confirmation_ouvrir" // V2
     }
 }

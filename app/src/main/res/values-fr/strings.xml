@@ -4,11 +4,64 @@
     <string name="mode_ajout_objet">Ajouter des objets</string>
     <string name="mode_ajout_connexion">Ajouter des connexions</string>
     <string name="mode_modification">Déplacer les objets</string>
+    <string name="mode_navigation">Navigation</string>
     <string name="action_reinitialiser">Réinitialiser le réseau</string>
 
     <string name="titre_ajout_objet">Nouvel objet</string>
     <string name="indice_etiquette">Étiquette</string>
     <string name="erreur_etiquette_vide">L\'étiquette ne peut pas être vide</string>
+
+    <!-- V2 : choix de la couleur d'un objet. -->
+    <string name="libelle_couleur">Couleur</string>
+    <string name="couleur_rouge">Rouge</string>
+    <string name="couleur_vert">Vert</string>
+    <string name="couleur_bleu">Bleu</string>
+    <string name="couleur_orange">Orange</string>
+    <string name="couleur_cyan">Cyan</string>
+    <string name="couleur_magenta">Magenta</string>
+    <string name="couleur_noir">Noir</string>
+
+    <!-- V2 : étiquette obligatoire à la création d'une connexion. -->
+    <string name="titre_ajout_connexion">Nouvelle connexion</string>
+
+    <!-- V2 : menus d'un objet et d'une connexion (appui long en mode modification). -->
+    <string name="titre_modifier_objet">Modifier l\'objet</string>
+    <string name="titre_modifier_connexion">Modifier la connexion</string>
+    <string name="bouton_supprimer">Supprimer</string>
+    <string name="libelle_epaisseur">Épaisseur</string>
+    <string name="epaisseur_fine">Fine</string>
+    <string name="epaisseur_moyenne">Moyenne</string>
+    <string name="epaisseur_epaisse">Épaisse</string>
+
+    <!-- V2 : Nouveau réseau et plans intégrés. -->
+    <string name="action_nouveau_reseau">Nouveau réseau</string>
+    <string name="titre_choisir_plan">Choisir un plan</string>
+    <string name="plan_appartement">Appartement</string>
+    <string name="plan_maison">Maison</string>
+    <string name="titre_reseau_non_enregistre">Réseau non enregistré</string>
+    <string name="message_reseau_non_enregistre">Le réseau actuel n\'a pas été enregistré. Le remplacer ?</string>
+
+    <!-- V2 : Enregistrer / Ouvrir. -->
+    <string name="action_enregistrer">Enregistrer</string>
+    <string name="action_ouvrir">Ouvrir</string>
+    <string name="titre_enregistrer">Enregistrer le réseau</string>
+    <string name="indice_nom_sauvegarde">Nom de la sauvegarde</string>
+    <string name="erreur_nom_vide">Le nom ne peut pas être vide</string>
+    <string name="erreur_nom_invalide">Utilisez seulement des lettres, chiffres, espaces, - et _</string>
+    <string name="titre_remplacer_sauvegarde">Remplacer la sauvegarde ?</string>
+    <string name="message_remplacer_sauvegarde">Une sauvegarde « %1$s » existe déjà. La remplacer ?</string>
+    <string name="titre_ouvrir">Ouvrir un réseau</string>
+    <string name="message_reseau_enregistre">Réseau enregistré sous « %1$s »</string>
+    <string name="message_reseau_ouvert">« %1$s » ouvert</string>
+    <string name="message_aucune_sauvegarde">Aucun réseau enregistré pour le moment</string>
+    <string name="message_erreur_enregistrement">Impossible d\'enregistrer « %1$s »</string>
+    <string name="message_erreur_lecture">Impossible de lire « %1$s ». Le réseau actuel n\'a pas changé.</string>
+    <string name="message_fichier_invalide">« %1$s » n\'est pas un fichier de réseau valide. Le réseau actuel n\'a pas changé.</string>
+
+    <!-- V2 : Export PNG + partage. -->
+    <string name="action_partager_image">Partager en image</string>
+    <string name="titre_partager_image">Partager le réseau</string>
+    <string name="message_erreur_export_image">Impossible de créer l\'image du réseau</string>
 
     <string name="titre_reinitialiser">Réinitialiser le réseau ?</string>
     <string name="message_reinitialiser">Tous les objets et toutes les connexions seront supprimés.</string>

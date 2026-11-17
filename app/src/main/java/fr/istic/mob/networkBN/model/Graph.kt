@@ -5,6 +5,7 @@ package fr.istic.mob.networkBN.model
  * Toute opération refusée renvoie null/false et NE MODIFIE PAS le graphe.
  *
  *  1. Étiquette d'objet non vide (après suppression des espaces).
+ *     V2 : idem pour l'étiquette d'une connexion.
  *  2. Identifiants stables et uniques (jamais réutilisés).
  *  3. Centre des objets toujours dans le cadre de l'image.
  *  4. Connexions non orientées : ni boucle (A–A) ni doublon (A–B ou B–A).
@@ -58,11 +59,31 @@ class Graph {
     // ---------------- Opérations ----------------
 
     /** @return l'objet créé, ou null si étiquette vide ou position hors du plan. */
-    fun addObjet(etiquette: String, x: Float, y: Float): Objet? {
+    fun addObjet(
+        etiquette: String,
+        x: Float,
+        y: Float,
+        couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT // V2
+    ): Objet? {
         val propre = etiquette.trim()
         if (propre.isEmpty() || !estDansLePlan(x, y)) return null
-        val objet = Objet(prochainId++, propre, Coordonnee(x, y))
+        val objet = Objet(prochainId++, propre, Coordonnee(x, y), couleur)
         _objets.add(objet)
+        return objet
+    }
+
+    /**
+     * V2 : recrée un objet lu dans une sauvegarde, avec son identifiant d'origine.
+     * Mêmes règles que [addObjet], plus : identifiant strictement positif et pas encore utilisé.
+     * Les prochains identifiants seront tous plus grands (jamais de réutilisation).
+     * @return l'objet recréé, ou null si refusé.
+     */
+    fun restaurerObjet(id: Long, etiquette: String, x: Float, y: Float, couleur: CouleurObjet): Objet? {
+        val propre = etiquette.trim()
+        if (id <= 0 || trouverObjet(id) != null || propre.isEmpty() || !estDansLePlan(x, y)) return null
+        val objet = Objet(id, propre, Coordonnee(x, y), couleur)
+        _objets.add(objet)
+        prochainId = maxOf(prochainId, id + 1)
         return objet
     }
 
@@ -72,10 +93,19 @@ class Graph {
                 o1 in _objets && o2 in _objets &&      // objets du graphe
                 _connexions.none { it.relie(o1, o2) }  // pas de doublon (A–B ou B–A)
 
-    /** @return la connexion créée, ou null si refusée. */
-    fun addConnexion(o1: Objet, o2: Objet): Connexion? {
-        if (!peutConnecter(o1, o2)) return null
-        val connexion = Connexion(o1, o2)
+    /**
+     * V2 : [etiquette] obligatoire (trimée ; vide ou espaces = refus).
+     * @return la connexion créée, ou null si refusée.
+     */
+    fun addConnexion(
+        o1: Objet,
+        o2: Objet,
+        etiquette: String,
+        couleur: CouleurObjet = Connexion.COULEUR_PAR_DEFAUT // V2
+    ): Connexion? {
+        val propre = etiquette.trim() // V2
+        if (propre.isEmpty() || !peutConnecter(o1, o2)) return null
+        val connexion = Connexion(o1, o2, propre, couleur = couleur)
         _connexions.add(connexion)
         return connexion
     }
@@ -95,4 +125,69 @@ class Graph {
         _connexions.clear()
         _objets.clear()
     }
+
+    /**
+     * Change la courbure d'une connexion (0 = droite).
+     * @return false si la flèche n'est pas un nombre fini ou si la connexion n'appartient pas au graphe.
+     */
+    fun modifierFleche(connexion: Connexion, fleche: Float): Boolean {
+        if (!fleche.isFinite() || connexion !in _connexions) return false
+        connexion.fleche = fleche
+        return true
+    }
+
+    // ---------------- V2 : menus (suppression et modification) ----------------
+
+    /** Connexion entre les objets d'identifiants [id1] et [id2], dans un sens ou dans l'autre. */
+    fun trouverConnexion(id1: Long, id2: Long): Connexion? {
+        val o1 = trouverObjet(id1) ?: return null
+        val o2 = trouverObjet(id2) ?: return null
+        return _connexions.firstOrNull { it.relie(o1, o2) }
+    }
+
+    /** Supprime l'objet ET toutes ses connexions : aucune connexion orpheline ne subsiste. */
+    fun supprimerObjet(objet: Objet): Boolean {
+        if (objet !in _objets) return false
+        _connexions.removeAll { it.concerne(objet) }
+        _objets.remove(objet)
+        return true
+    }
+
+    fun supprimerConnexion(connexion: Connexion): Boolean = _connexions.remove(connexion)
+
+    /** @return false (rien n'est modifié) si l'étiquette est vide ou l'objet hors du graphe. */
+    fun modifierEtiquette(objet: Objet, etiquette: String): Boolean {
+        val propre = etiquette.trim()
+        if (propre.isEmpty() || objet !in _objets) return false
+        objet.etiquette = propre
+        return true
+    }
+
+    fun modifierCouleur(objet: Objet, couleur: CouleurObjet): Boolean {
+        if (objet !in _objets) return false
+        objet.couleur = couleur
+        return true
+    }
+
+    /** @return false (rien n'est modifié) si l'étiquette est vide ou la connexion hors du graphe. */
+    fun modifierEtiquette(connexion: Connexion, etiquette: String): Boolean {
+        val propre = etiquette.trim()
+        if (propre.isEmpty() || connexion !in _connexions) return false
+        connexion.etiquette = propre
+        return true
+    }
+
+    fun modifierCouleur(connexion: Connexion, couleur: CouleurObjet): Boolean {
+        if (connexion !in _connexions) return false
+        connexion.couleur = couleur
+        return true
+    }
+
+    /** @return false si l'épaisseur n'est pas un nombre fini strictement positif ou la connexion hors du graphe. */
+    fun modifierEpaisseur(connexion: Connexion, epaisseur: Float): Boolean {
+        if (!epaisseur.isFinite() || epaisseur <= 0f || connexion !in _connexions) return false
+        connexion.epaisseur = epaisseur
+        return true
+    }
+
 }

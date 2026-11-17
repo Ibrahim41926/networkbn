@@ -6,16 +6,24 @@ package fr.istic.mob.networkBN.model
  *  - [id]        : identifiant STABLE et unique, attribué par [Graph] (jamais réutilisé).
  *  - [etiquette] : texte saisi par l'utilisateur (non vide, non traduit).
  *  - [position]  : centre de l'objet, dans le repère du plan.
- *  - [couleur]   : couleur ARGB stockée en Int (pas de dépendance Android).
+ *  - [couleur]   : V2 : couleur choisie à la création (vert par défaut).
  *
  * Constructeur `internal` : seul [Graph.addObjet] crée des objets.
  */
 class Objet internal constructor(
     val id: Long,
-    val etiquette: String,
+    etiquette: String,
     position: Coordonnee,
-    val couleur: Int = COULEUR_PAR_DEFAUT
+    couleur: CouleurObjet = CouleurObjet.PAR_DEFAUT
 ) {
+
+    /** V2 : modifiable depuis le menu de l'objet, uniquement via [Graph.modifierEtiquette]. */
+    var etiquette: String = etiquette
+        internal set
+
+    /** V2 : modifiable depuis le menu de l'objet, uniquement via [Graph.modifierCouleur]. */
+    var couleur: CouleurObjet = couleur
+        internal set
 
     /**
      * Lecture publique, écriture réservée au module (via [Graph.modifiePosition]).
@@ -29,10 +37,5 @@ class Objet internal constructor(
 
     override fun hashCode(): Int = id.hashCode()
 
-    override fun toString(): String = "Objet(id=$id, etiquette='$etiquette', position=$position)"
-
-    companion object {
-        /** Vert (0xFF2E7D32). */
-        val COULEUR_PAR_DEFAUT: Int = 0xFF2E7D32.toInt()
-    }
+    override fun toString(): String = "Objet(id=$id, etiquette='$etiquette', position=$position, couleur=${couleur.id})"
 }

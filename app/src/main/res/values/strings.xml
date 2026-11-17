@@ -8,11 +8,64 @@
     <string name="mode_ajout_objet">Add objects</string>
     <string name="mode_ajout_connexion">Add connections</string>
     <string name="mode_modification">Move objects</string>
+    <string name="mode_navigation">Navigation</string>
     <string name="action_reinitialiser">Reset network</string>
 
     <string name="titre_ajout_objet">New object</string>
     <string name="indice_etiquette">Label</string>
     <string name="erreur_etiquette_vide">The label cannot be empty</string>
+
+    <!-- V2 : choix de la couleur d'un objet. -->
+    <string name="libelle_couleur">Color</string>
+    <string name="couleur_rouge">Red</string>
+    <string name="couleur_vert">Green</string>
+    <string name="couleur_bleu">Blue</string>
+    <string name="couleur_orange">Orange</string>
+    <string name="couleur_cyan">Cyan</string>
+    <string name="couleur_magenta">Magenta</string>
+    <string name="couleur_noir">Black</string>
+
+    <!-- V2 : étiquette obligatoire à la création d'une connexion. -->
+    <string name="titre_ajout_connexion">New connection</string>
+
+    <!-- V2 : menus d'un objet et d'une connexion (appui long en mode modification). -->
+    <string name="titre_modifier_objet">Edit object</string>
+    <string name="titre_modifier_connexion">Edit connection</string>
+    <string name="bouton_supprimer">Delete</string>
+    <string name="libelle_epaisseur">Thickness</string>
+    <string name="epaisseur_fine">Thin</string>
+    <string name="epaisseur_moyenne">Medium</string>
+    <string name="epaisseur_epaisse">Thick</string>
+
+    <!-- V2 : Nouveau réseau et plans intégrés. -->
+    <string name="action_nouveau_reseau">New network</string>
+    <string name="titre_choisir_plan">Choose a floor plan</string>
+    <string name="plan_appartement">Apartment</string>
+    <string name="plan_maison">House</string>
+    <string name="titre_reseau_non_enregistre">Unsaved network</string>
+    <string name="message_reseau_non_enregistre">The current network has not been saved. Replace it?</string>
+
+    <!-- V2 : Enregistrer / Ouvrir. -->
+    <string name="action_enregistrer">Save network</string>
+    <string name="action_ouvrir">Open network</string>
+    <string name="titre_enregistrer">Save the network</string>
+    <string name="indice_nom_sauvegarde">Save name</string>
+    <string name="erreur_nom_vide">The name cannot be empty</string>
+    <string name="erreur_nom_invalide">Use only letters, digits, spaces, - and _</string>
+    <string name="titre_remplacer_sauvegarde">Replace the save?</string>
+    <string name="message_remplacer_sauvegarde">A save named “%1$s” already exists. Replace it?</string>
+    <string name="titre_ouvrir">Open a network</string>
+    <string name="message_reseau_enregistre">Network saved as “%1$s”</string>
+    <string name="message_reseau_ouvert">“%1$s” opened</string>
+    <string name="message_aucune_sauvegarde">No saved network yet</string>
+    <string name="message_erreur_enregistrement">Could not save “%1$s”</string>
+    <string name="message_erreur_lecture">Could not read “%1$s”. The current network is unchanged.</string>
+    <string name="message_fichier_invalide">“%1$s” is not a valid network file. The current network is unchanged.</string>
+
+    <!-- V2 : Export PNG + partage. -->
+    <string name="action_partager_image">Share as image</string>
+    <string name="titre_partager_image">Share the network</string>
+    <string name="message_erreur_export_image">Could not create the network image</string>
 
     <string name="titre_reinitialiser">Reset the network?</string>
     <string name="message_reinitialiser">All objects and connections will be deleted.</string>
